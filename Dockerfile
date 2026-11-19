@@ -1,7 +1,8 @@
 # One image for both Railway services:
-#   web:    uvicorn app.main:app            (RUN_JOBS=false)   -> railway.json
-#   worker: python -m app.workers           (RUN_JOBS=true)    -> railway.worker.json
+#   web:    uvicorn app.main:app            (RUN_JOBS=false; the default CMD below)
+#   worker: python -m app.workers           (RUN_JOBS=true; set as the worker's start command)
 # Pre-deploy (web): python -m app.db.migrate  (indexes + migrations, once per deploy)
+# Railway settings for each service: docs/DEPLOY_RAILWAY.md
 
 # ---- 1. Build the screens ----
 FROM node:22-bookworm-slim AS screens

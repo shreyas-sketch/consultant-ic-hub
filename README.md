@@ -42,12 +42,12 @@ CHROME_PATH=/path/to/chrome node scripts/crawl.mjs   # every screen at phone and
 
 On Railway: see **[docs/DEPLOY_RAILWAY.md](docs/DEPLOY_RAILWAY.md)**. In short, one image, two services:
 
-| Service | Start | Config |
+| Service | Start | Notes |
 |---|---|---|
-| web | `uvicorn app.main:app` (pre-deploy: `python -m app.db.migrate`) | `railway.json` |
-| worker | `python -m app.workers` | `railway.worker.json` |
+| web | `uvicorn app.main:app` (image default) | pre-deploy `python -m app.db.migrate`, healthcheck `/api/health/ready` |
+| worker | `python -m app.workers` | no public domain |
 
-plus MongoDB and an S3-compatible bucket. Anywhere else with Docker:
+plus MongoDB and a Railway Storage Bucket (or any S3-compatible bucket). Service settings are made on the services in Railway (the guide lists every value); Railway no longer reads `railway.json` for new services. Anywhere else with Docker:
 
 ```bash
 docker build -t practice-os .

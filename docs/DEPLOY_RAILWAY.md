@@ -1,112 +1,169 @@
 # Deploying on Railway
 
-One repository, one Docker image, three to four Railway services:
+One repository, one Docker image, four Railway services in one project and environment (`production`):
 
-| Service | What | Config |
+| Service | What it runs | Source |
 |---|---|---|
-| **web** | `uvicorn app.main:app`: screens, API, client pages, webhooks, MCP | `railway.json` (repo root, picked up automatically) |
-| **worker** | `python -m app.workers`: scheduled jobs | `railway.worker.json` (set as the service's config file path) |
-| **MongoDB** | database | Railway MongoDB template (staging) or MongoDB Atlas (production) |
-| **Bucket** | uploads, signed contracts, invoice ZIPs | Railway Storage Bucket, Cloudflare R2 or AWS S3 |
+| **web** | `uvicorn app.main:app` (the image's default command): screens, API, client pages, webhooks, MCP | this GitHub repo |
+| **worker** | `python -m app.workers`: scheduled jobs | this GitHub repo again |
+| **MongoDB** | the database | Docker image `mongo:7` with a volume |
+| **Bucket** | uploads, signed contracts, invoice PDFs and ZIPs | a Railway Storage Bucket |
 
-> Field names in `railway.json` follow Railway's config-as-code format (`build.builder`, `build.dockerfilePath`, `deploy.preDeployCommand`, `deploy.healthcheckPath`, `deploy.restartPolicyType`, ...). If Railway's dashboard flags one as unknown, the same setting can be made by hand in the service's Settings tab.
+> **Service settings live on the services, not in the repo.** Railway no longer accepts config-as-code files (`railway.json` / `railway.toml`) for new services; it now points to Infrastructure as Code (`.railway/railway.ts`, see [Railway's migration notes](https://docs.railway.com/infrastructure-as-code#migrating-from-config-as-code)). This repo doesn't use either: set the values in the tables below in each service's **Settings** tab (or through Railway's API). They are the settings the live deployment runs with.
 
-## 1. Create the project
+## 1. Create the services
 
-1. Railway → **New project → Deploy from GitHub repo** → pick this repository. This creates the **web** service. Railway finds `railway.json` and builds the `Dockerfile`.
-2. **+ New → Database → MongoDB.** Railway names it `MongoDB` and exposes `MONGO_URL` on the private network.
-3. **+ New → GitHub repo** → the same repository again. Rename it **worker**. In its **Settings → Config-as-code**, set the config file path to `/railway.worker.json`.
-4. Optional but needed for production: **+ New → Bucket** (or create an R2/S3 bucket).
+1. **web**: **New project → Deploy from GitHub repo** → this repository. Railway finds the `Dockerfile` in the repo root and builds with it. The service is named after the repo (e.g. `consultant-ic-hub`); that's fine.
+2. **MongoDB**: **+ New → Docker image** → `mongo:7`. Name it `MongoDB`. Then:
+   - add a **volume** mounted at `/data/db`;
+   - set its **start command** (Settings → Deploy) to
+     ```
+     sh -c "mkdir -p /data/db/practice-os && exec docker-entrypoint.sh mongod --dbpath /data/db/practice-os --ipv6 --bind_ip ::,0.0.0.0"
+     ```
+   - set its variables (Variables tab):
+     ```
+     MONGO_INITDB_ROOT_USERNAME=mongo
+     MONGO_INITDB_ROOT_PASSWORD=<long random hex, e.g. python3 -c "import secrets; print(secrets.token_hex(24))">
+     MONGO_URL=mongodb://${{MONGO_INITDB_ROOT_USERNAME}}:${{MONGO_INITDB_ROOT_PASSWORD}}@${{RAILWAY_PRIVATE_DOMAIN}}:27017
+     ```
+   Why the start command looks like that:
+   - `docker-entrypoint.sh` must stay in front of `mongod`. It is what creates the admin user and turns on password checks. A plain `mongod …` start command skips it, and the database then runs **with no password**.
+   - The entrypoint only creates the user when the data folder is **empty**. Pointing `--dbpath` at a fresh subfolder of the volume guarantees that on the first start (and is how you recover if a first start went wrong: change the folder name, redeploy).
+   - `--ipv6 --bind_ip ::,0.0.0.0` makes it reachable over Railway's private network.
+   - Railway's own **+ New → Database → MongoDB** template is a fine alternative; it already exposes `MONGO_URL`.
+3. **worker**: **+ New → GitHub repo** → the same repository again. Rename it **worker**. Set its start command (table below).
+4. **Bucket**: **+ New → Bucket**. Railway gives it a generated name (e.g. `sorted-toybox`); you can rename it. **A new bucket is a staged change: click Deploy / Apply changes on the project canvas** (the "New" badge goes away). Until then it doesn't exist in the environment and its variables resolve to nothing.
+5. **Domain**: on web, **Settings → Networking → Generate domain** (port `8000`), or add your own domain.
 
-## 2. Variables
+## 2. Service settings
 
-Use **Shared Variables** for everything both services need, then reference them. Minimum for production:
+| Setting | web | worker | MongoDB |
+|---|---|---|---|
+| Dockerfile path | `Dockerfile` | `Dockerfile` | (image) |
+| Start command | leave empty (image default) | `python -m app.workers` | see above |
+| Pre-deploy command | `python -m app.db.migrate` | none | none |
+| Healthcheck path | `/api/health/ready` | none | none |
+| Healthcheck timeout | `120` | | |
+| Restart policy | On failure, max 5 retries | Always | default |
+| Overlap / draining seconds | `30` / `30` | — / `60` | default |
+| Watch paths | `backend/app/**`, `backend/requirements.txt`, `frontend/**`, `Dockerfile` | `backend/app/**`, `backend/requirements.txt`, `Dockerfile` | |
+| Volume | none | none | `/data/db` |
 
-```bash
-# shared by web and worker
-SECRET_KEY=<python -c "import secrets; print(secrets.token_urlsafe(48))">
-TOKEN_KEY=<python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())">
+## 3. Variables
+
+Set these on **both web and worker** (or once as Shared Variables). In the references, `MongoDB` and `sorted-toybox` are the **service names**: use yours.
+
+```
+SECRET_KEY=<python3 -c "import secrets; print(secrets.token_urlsafe(48))">
+TOKEN_KEY=<python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())">
+HOOK_SECRET=<python3 -c "import secrets; print(secrets.token_urlsafe(32))">
 MONGO_URL=${{MongoDB.MONGO_URL}}
 DB_NAME=practice_os
 APP_URL=https://<your web domain>
-ADMIN_PHONES=+91XXXXXXXXXX
-HOOK_SECRET=<python -c "import secrets; print(secrets.token_urlsafe(32))">
+LOG_JSON=true
 VENDOR_STORAGE=live
-S3_BUCKET=${{Bucket.BUCKET}}                 # check the exact names on the bucket's Variables tab
-S3_ENDPOINT_URL=${{Bucket.ENDPOINT}}
-S3_ACCESS_KEY_ID=${{Bucket.ACCESS_KEY_ID}}
-S3_SECRET_ACCESS_KEY=${{Bucket.SECRET_ACCESS_KEY}}
-S3_REGION=${{Bucket.REGION}}
+S3_BUCKET=${{sorted-toybox.BUCKET}}
+S3_ENDPOINT_URL=${{sorted-toybox.ENDPOINT}}
+S3_REGION=${{sorted-toybox.REGION}}
+S3_ACCESS_KEY_ID=${{sorted-toybox.ACCESS_KEY_ID}}
+S3_SECRET_ACCESS_KEY=${{sorted-toybox.SECRET_ACCESS_KEY}}
+S3_ADDRESSING_STYLE=virtual
+ADMIN_PHONES=+91XXXXXXXXXX
+STAFF_EMAIL=you@yourdomain.in
+STAFF_PASSWORD=<strong password>
 ```
+
+Things to check:
+- **Same secrets on both services.** `SECRET_KEY`, `TOKEN_KEY` and `HOOK_SECRET` must be identical on web and worker. **Never change `TOKEN_KEY`** later: saved Gmail, Outlook and Zoom connections are encrypted with it.
+- **Set `APP_URL` explicitly.** The worker has no public domain of its own, so it can't work it out, and it refuses to start without an `https://` `APP_URL`.
+- **Bucket details.** Use the bucket's `BUCKET` variable, **not** `RAILWAY_BUCKET_NAME`. Railway buckets use virtual-host URLs, so `S3_ADDRESSING_STYLE=virtual` (the default) is right.
+- **Order matters for storage.** Keep `VENDOR_STORAGE=fake` until the bucket is deployed. With `live` and an unresolved `S3_BUCKET`, the app refuses to start. Without a bucket, uploads go to the container's disk and vanish on redeploy, and the worker can't share files with web.
 
 Per service:
 
 | Variable | web | worker |
 |---|---|---|
 | `RUN_JOBS` | `false` | `true` |
-| `WEB_CONCURRENCY` | `2` (uvicorn processes per replica; raise with CPU) | not used |
-| `ENSURE_INDEXES_ON_START` | `true` | `false` (web's pre-deploy already did it) |
+| `WEB_CONCURRENCY` | `2` (uvicorn processes per replica) | not used |
+| `ENSURE_INDEXES_ON_START` | `true` | `false` |
 
-Webhook URLs for providers carry the secret: `https://<app>/api/hooks/whatsapp-inbound?secret=<HOOK_SECRET>` (also `email-inbound`, `email-events`, `meetbot`).
+Then switch on each outside service as its keys arrive. Set each pair on both web and worker:
 
-Then switch on each real vendor (`VENDOR_AI=live` + `ANTHROPIC_API_KEY`, `VENDOR_WHATSAPP=live` + `AISENSY_API_KEY`, ...) as its keys arrive. The full list with comments is in `backend/.env.example`.
+| Feature | Variables |
+|---|---|
+| Login codes by WhatsApp | `VENDOR_WHATSAPP=live`, `AISENSY_API_KEY` |
+| Login codes by SMS | `VENDOR_SMS=live`, `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID` |
+| AI agents and chat | `VENDOR_AI=live`, `ANTHROPIC_API_KEY` |
+| Email | `VENDOR_EMAIL=live`, `EMAIL_API_URL`, `EMAIL_API_KEY`, `EMAIL_FROM`, `INBOUND_DOMAIN` |
+| Google (Gmail, Calendar, Meet) | `VENDOR_GMAIL`, `VENDOR_GCAL`, `VENDOR_MEET` = `live`; `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
+| Outlook | `VENDOR_OUTLOOK`, `VENDOR_OUTLOOK_CAL` = `live`; `MS_CLIENT_ID`, `MS_CLIENT_SECRET` |
+| Zoom | `VENDOR_ZOOM=live`; `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET` |
+| Notetaker | `VENDOR_MEETBOT=live`; `MEETBOT_API_URL`, `MEETBOT_API_KEY` |
+| Errors | `SENTRY_DSN` |
 
-**The app refuses to start with unsafe values** (default or short `SECRET_KEY`, no `TOKEN_KEY`, `http://` `APP_URL`, `localhost` Mongo). The deploy log shows exactly which ones. `ALLOW_UNSAFE_CONFIG=true` bypasses this for a throwaway staging box only.
+**Logins need WhatsApp or SMS.** Consultants log in with a code sent by WhatsApp (SMS as backup). While both are `fake`, codes are never delivered and only the staff email login (Admin screen) works.
 
-## 3. What happens on each deploy
+OAuth redirect URIs to register with the providers: `<APP_URL>/api/connect/gmail/callback`, `/api/connect/outlook/callback`, `/api/connect/zoom/callback`.
 
-1. Railway builds the image (screens in a Node stage, then the Python server). Only changes under `backend/app`, `frontend` or the `Dockerfile` trigger a build (`watchPatterns`).
+Webhook URLs to give the providers (each carries the secret): `<APP_URL>/api/hooks/whatsapp-inbound?secret=<HOOK_SECRET>`, and the same for `email-inbound`, `email-events` and `meetbot`.
+
+The full list with comments is in `backend/.env.example`. **The app refuses to start with unsafe values** (default or short `SECRET_KEY`, no `TOKEN_KEY`, `http://` `APP_URL`, localhost Mongo, live messaging without `HOOK_SECRET`). The deploy log names each one.
+
+## 4. What happens on each deploy
+
+1. Railway builds the image from the `Dockerfile` (screens in a Node stage, then the Python server). Only changes under the watch paths trigger a build.
 2. **Pre-deploy (web):** `python -m app.db.migrate` builds missing indexes and applies pending migrations under a lock. If it fails, the deploy stops and the old version keeps serving.
-3. Railway starts the new web container and waits for `GET /api/health/ready` (database ping) to return 200 before moving traffic. Old containers get 30 s to drain.
-4. The worker restarts; SIGTERM lets running jobs finish their step, and leases stop a new worker from starting a job the old one is still running.
+3. Railway starts the new web container and waits for `GET /api/health/ready` (which pings the database) before moving traffic. Old containers get 30 s to drain.
+4. The worker restarts. SIGTERM lets running jobs finish their step, and job leases stop a new worker from starting a job the old one still holds.
 
-## 4. Domains
+## 5. Domains
 
-- **Web:** Settings → Networking → Generate domain (or add `app.yourdomain.in`). Set `APP_URL` to it.
-- **Client pages on subdomains** (`<practice>.yourdomain.in`): add a wildcard custom domain `*.yourdomain.in` to the web service, set `CLIENT_DOMAIN=yourdomain.in`. Without it, client pages live at `APP_URL/c/<practice>/...`, which works out of the box.
-- **Practices' own domains:** add each one as a custom domain on the web service and map it in Admin → Accounts. `GET /api/public/domain-check?domain=...` answers 200 only for mapped domains, for a TLS proxy using on-demand certificates.
+- **Web:** a generated `*.up.railway.app` domain, or your own (`app.yourdomain.in`). `APP_URL` must match it.
+- **Client pages on subdomains** (`<practice>.yourdomain.in`): add a wildcard custom domain `*.yourdomain.in` to web and set `CLIENT_DOMAIN=yourdomain.in`. Without it, client pages live at `APP_URL/c/<practice>/...`, which works out of the box.
+- **Practices' own domains:** add each as a custom domain on web and map it in Admin → Accounts. `GET /api/public/domain-check?domain=...` answers 200 only for mapped domains (for a TLS proxy using on-demand certificates).
 
-## 5. Scaling
+## 6. Scaling
 
 | When | Do |
 |---|---|
-| Web CPU high / slow responses | raise `WEB_CONCURRENCY`, then add web replicas (stateless, no other change) |
-| Jobs falling behind (Admin → Jobs shows long `seconds`) | raise `JOB_WS_CONCURRENCY` / `JOB_AGENT_CONCURRENCY`, then add a worker replica (leases keep it safe) |
-| Database CPU or connections | move to Atlas M10+ in Mumbai with a replica set; keep `replicas × WEB_CONCURRENCY × MONGO_MAX_POOL` under the cluster's connection limit |
+| Web CPU high / slow responses | raise `WEB_CONCURRENCY`, then add web replicas (stateless) |
+| Jobs falling behind (Admin → Jobs shows long durations) | raise `JOB_WS_CONCURRENCY` / `JOB_AGENT_CONCURRENCY`, then add a worker replica (leases keep it safe) |
+| Database CPU or connections | move to MongoDB Atlas (Mumbai, M10+, replica set) and point `MONGO_URL` at it; keep `replicas × WEB_CONCURRENCY × MONGO_MAX_POOL` under its connection limit |
 | Report-heavy load | `MONGO_READ_PREFERENCE=secondaryPreferred` on a replica set |
 
-Local file storage only works for a single web replica with **no** separate worker (they would not share a disk). Use a bucket as soon as the worker runs.
+## 7. A demo deployment (no database, no keys)
 
-## 6. A demo deployment (no database, no keys)
+Deploy only **web**, with no pre-deploy command, and set:
 
-For a clickable demo on sample data, deploy only the web service with:
-
-```bash
+```
 QA_MODE=true
-WEB_CONCURRENCY=1      # the in-memory database lives in one process
-RUN_JOBS=true          # jobs run inside web
+WEB_CONCURRENCY=1
+RUN_JOBS=true
 ```
 
-Remove the pre-deploy command for this service (it is harmless but useless here). Data resets on every restart. Personas are on the login screen. Never point real users at a QA deployment: login codes are shown on screen and `000000` always works.
+You get sample data and persona logins. Data resets on restart. Never give it to real users: in QA mode the code `000000` always logs in.
 
-## 7. Checks after the first production deploy
+## 8. Checks after deploying
 
 ```bash
-curl -s https://<app>/api/health
+curl -s https://<your-app>/api/health/ready
 ```
 
-```bash
-curl -s https://<app>/api/health/ready
-```
-
-Then log in with an `ADMIN_PHONES` number, open **Admin → Health** and **Admin → Jobs** (every job should show runs within a few minutes), and walk through the before-launch list in `HANDOVER.md`.
+You want `{"ok":true,"db":"up",...}`. Then:
+- log in with `STAFF_EMAIL` / `STAFF_PASSWORD`;
+- open **Admin → Jobs** (every job should show runs within minutes);
+- upload a logo in **Settings**, redeploy web, and confirm it's still there (proves the bucket).
 
 ## Troubleshooting
 
 | Symptom | Likely cause |
 |---|---|
-| Deploy fails at pre-deploy with `Refusing to start with unsafe settings` | a required variable is missing; the log lists which |
-| Healthcheck times out | `MONGO_URL` wrong or the Mongo service is in another environment; `/api/health` (no DB) still answers |
-| Uploads work, but downloads 404 after a redeploy | local storage on an ephemeral disk: set `VENDOR_STORAGE=live` and the bucket variables |
-| Jobs never run | worker missing `RUN_JOBS=true`, or its config file path isn't set to `/railway.worker.json` |
-| Logged out on every request | `APP_URL` is `https://` but you are browsing over plain `http` (cookies are `Secure`) |
+| Pre-deploy fails with `Refusing to start with unsafe settings` | a required variable is missing; the log lists which |
+| Pre-deploy fails with `Authentication failed` (code 18) | MongoDB started without its admin user, i.e. its start command bypassed `docker-entrypoint.sh`, or the data folder wasn't empty on first start. Fix the start command as above, change the `--dbpath` folder name, redeploy MongoDB, then web |
+| MongoDB log says "Access control is not enabled" after start-up | the same problem: the database has no password. Fix it before storing anything |
+| Healthcheck times out | `MONGO_URL` wrong, or MongoDB isn't deployed in this environment. `/api/health` (no database) still answers |
+| `S3_*` variables resolve to nothing | the bucket was added but not deployed. Apply the staged change on the canvas |
+| Uploads vanish after a redeploy | `VENDOR_STORAGE` is still `fake` |
+| Jobs never run | the worker's start command isn't `python -m app.workers`, or `APP_URL` isn't set on the worker |
+| Logged out on every request | `APP_URL` is `https://` but you're browsing over plain `http` (cookies are `Secure`) |
+| Nobody receives a login code | WhatsApp and SMS are both `fake`; connect AiSensy or MSG91 |
