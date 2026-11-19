@@ -341,3 +341,17 @@ async def test_ai_invoice_edit_and_undo():
     assert out["totals"]["discount"] == 600000 and len(out["schedule"]) == 3
     back = await act(c, "invoices.undo_ai_edit", {"id": inv["id"]})
     assert back["totals"]["discount"] == 0 and len(back["schedule"]) == 1
+
+
+async def test_due_on_receipt_is_not_overdue_the_same_day_but_is_the_next():
+    c, ws = await setup_owner("+919822200099")
+    pr = await act(c, "projects.create", {"name": "X", "contact": {"name": "Ravi", "email": "ravi@x.in", "phone": "9820000099"}})
+    inv = await act(c, "payments.request", {"project_id": pr["id"], "amount_paise": 1234550, "label": "Milestone"})
+    groups = (await act(c, "payments.list_due", {"project_id": pr["id"]}))["groups"]
+    assert [i["label"] for i in groups["upcoming"]] == ["Milestone"] and not groups["overdue"]
+    from app.workers.jobs import j_money
+    await j_money()
+    assert not await get_db().events.count_documents({"type": "payment.overdue", "payload.invoice_id": inv["id"]})
+    advance_clock(days=1)
+    groups = (await act(c, "payments.list_due", {"project_id": pr["id"]}))["groups"]
+    assert [i["label"] for i in groups["overdue"]] == ["Milestone"]

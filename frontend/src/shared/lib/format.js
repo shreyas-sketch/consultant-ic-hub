@@ -6,7 +6,7 @@ export function inr(paise, { short = false, sign = false } = {}) {
   let s;
   if (short && r >= 1e7) s = `₹${trim(r / 1e7)} Cr`;
   else if (short && r >= 1e5) s = `₹${trim(r / 1e5)} L`;
-  else s = "₹" + Math.round(r).toLocaleString("en-IN");
+  else s = "₹" + r.toLocaleString("en-IN", { minimumFractionDigits: Math.abs(paise) % 100 ? 2 : 0, maximumFractionDigits: 2 });
   return (neg ? "-" : sign && paise > 0 ? "+" : "") + s;
 }
 const trim = (n) => (Math.round(n * 10) / 10).toString();

@@ -120,8 +120,9 @@ export function Field({ label, hint, error, children, className = "" }) {
   );
 }
 const inputCls = "w-full rounded-input border border-hairline bg-panel px-3.5 py-3 text-ivory placeholder:text-ivory-35 focus:border-gold focus:outline-none";
-export const Input = ({ className = "", ai, ...p }) => <input className={cx(inputCls, ai && "focus:border-teal", className)} {...p} />;
-export const Textarea = ({ className = "", ai, ...p }) => <textarea className={cx(inputCls, "min-h-[96px]", ai && "font-mono text-[14px] focus:border-teal", className)} {...p} />;
+// Inputs without a visible label take their placeholder as the accessible name (screen readers).
+export const Input = ({ className = "", ai, ...p }) => <input aria-label={p["aria-label"] ?? p.placeholder} className={cx(inputCls, ai && "focus:border-teal", className)} {...p} />;
+export const Textarea = ({ className = "", ai, ...p }) => <textarea aria-label={p["aria-label"] ?? p.placeholder} className={cx(inputCls, "min-h-[96px]", ai && "font-mono text-[14px] focus:border-teal", className)} {...p} />;
 export function Select({ options, className = "", ...p }) {
   return (
     <select className={cx(inputCls, "appearance-none pr-9", className)} {...p}>
@@ -200,7 +201,8 @@ export function Sheet({ open, onClose, title, children, wide, ai }) {
   if (!open) return null;
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 md:items-center" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={cx("rise max-h-[92vh] w-full overflow-y-auto rounded-t-[18px] border bg-panel p-5 md:rounded-frame", wide ? "md:max-w-3xl" : "md:max-w-lg",
+      <div role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}
+        className={cx("rise max-h-[92vh] w-full overflow-y-auto rounded-t-[18px] border bg-panel p-5 md:rounded-frame", wide ? "md:max-w-3xl" : "md:max-w-lg",
         ai ? "border-teal/50" : "border-hairline")}>
         <div className="mb-4 flex items-center justify-between gap-3">
           <h2 className="text-[20px] font-extrabold">{title}</h2>

@@ -131,10 +131,17 @@ def qr_svg(data: str) -> str:
     return "data:image/svg+xml;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
+def past_due(due) -> bool:
+    """Overdue means the due DAY (India time) has passed. 'Due on receipt' sets the due
+    date to the moment of sending; that must not read as overdue the same day."""
+    from app.core.util import IST
+    return bool(due) and aware(due).astimezone(IST).date() < now().astimezone(IST).date()
+
+
 def item_state(s, inv):
     if s["status"] in ("paid", "processing"):
         return s["status"]
-    if s.get("due_date") and aware(s["due_date"]) < now():
+    if past_due(s.get("due_date")):
         return "overdue"
     return "upcoming"
 

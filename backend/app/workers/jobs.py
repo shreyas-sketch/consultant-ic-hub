@@ -151,7 +151,7 @@ async def j_sessions():
 
 async def j_money():
     """Overdue marking (+ payment.overdue once), late fees at 30 days, invoice reminders."""
-    from app.domain.billing.money import save_invoice
+    from app.domain.billing.money import past_due, save_invoice
     from app.core.events import emit, log
     db = get_db()
     n = 0
@@ -164,7 +164,7 @@ async def j_money():
             if s["status"] in ("paid", "processing") or not s.get("due_date"):
                 continue
             due = aware(s["due_date"])
-            if due < now() and not s.get("overdue_emitted"):
+            if past_due(due) and not s.get("overdue_emitted"):
                 s["overdue_emitted"] = True
                 changed = True
                 await emit(ctx, "payment.overdue", {"invoice_id": inv["_id"], "item_id": s["id"]}, inv["project_id"])

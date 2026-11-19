@@ -633,7 +633,11 @@ async def create_lead(ctx, d: dict):
               "\n".join(f"{k}: {v}" for k, v in (d.get("answers") or {}).items())
         await ctx.data.notes.insert({"project_id": pr["_id"], "text": txt.strip(), "shared": False, "actor": "client",
                                      "kind": "enquiry"})
-    await log(ctx, pr["_id"], "lead", f"New lead from {d.get('source') or d.get('via')}", meta={"via": d.get("via")})
+    via_text = {"manual": "added by hand", "form": "from a lead form", "screenshot": "from a screenshot", "inbox": "found in your inbox",
+                "booking": "from the booking page", "csv": "from a CSV import", "mcp": "added by an AI assistant"}
+    src = d.get("source")
+    how = f"from {src}" if src else via_text.get(d.get("via"), f"via {d.get('via')}" if d.get("via") else "added")
+    await log(ctx, pr["_id"], "lead", f"New lead {how}", meta={"via": d.get("via")})
     if d.get("via") in ("form", "screenshot", "inbox"):
         await emit(ctx, "lead_form.submitted", {"form_id": d.get("form_id"), "via": d.get("via"), "contact_id": c["_id"],
                                                 "answers": d.get("answers") or {}, "message": d.get("message", "")}, pr["_id"])

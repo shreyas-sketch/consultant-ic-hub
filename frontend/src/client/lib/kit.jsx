@@ -23,7 +23,9 @@ export const cpost = (u, b = {}) => call("POST", u, b);
 
 export function inr(p) {
   if (p === null || p === undefined) return "";
-  return "₹" + Math.round(p / 100).toLocaleString("en-IN");
+  // Never round money a client is asked to pay: ₹12,345.50 stays ₹12,345.50.
+  const paise = Math.round(p) % 100 !== 0;
+  return "₹" + (p / 100).toLocaleString("en-IN", { minimumFractionDigits: paise ? 2 : 0, maximumFractionDigits: 2 });
 }
 export const myTz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Kolkata";
 export const fmtTime = (iso, tz) => new Date(iso).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: tz }).toUpperCase();
@@ -77,7 +79,8 @@ export function Sheet({ open, onClose, title, children }) {
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 md:items-center" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="rise max-h-[92vh] w-full overflow-y-auto bg-white p-5 md:max-w-md" style={{ borderRadius: "18px 18px 0 0" }}>
+      <div role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined}
+        className="rise max-h-[92vh] w-full overflow-y-auto bg-white p-5 md:max-w-md" style={{ borderRadius: "18px 18px 0 0" }}>
         <div className="mb-3 flex items-center justify-between"><h2 className="text-[20px] font-extrabold">{title}</h2><button onClick={onClose} className="h-11 w-11 text-[22px]" aria-label="Close">×</button></div>
         {children}
       </div>
