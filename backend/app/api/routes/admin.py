@@ -5,7 +5,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from app.api.routes.auth import get_admin, norm_phone, revoke_sessions
+from app.api.deps import get_admin
+from app.auth import norm_phone, revoke_sessions
 from app.core import limits, settings
 from app.db import get_db
 from app.core.util import AppError, aware, clean, fmt_date, month_key, new_id, now

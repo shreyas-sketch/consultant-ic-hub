@@ -23,7 +23,9 @@ from app.domain.engagement.inbox import receive
 from app.domain.documents.merge import build, client_base, fill, session_values
 from app.domain.engagement.portal import client_project, client_projects
 from app.domain.engagement.scheduling import book, cancel_session, extend_hold_after_claim, find_slots, get_type
-from app.api.routes.auth import check_otp, norm_phone
+from app.api.deps import client_ip
+from app.auth import check_otp, issue_otp, norm_phone
+from app.services.uploads import data_url_to_key, mime_of  # noqa: F401  (data_url_to_key re-exported)
 from app.core import limits, settings
 from app.core.context import system_ctx
 from app.db import get_db
@@ -38,8 +40,7 @@ def cctx(ws_id):
     return system_ctx(ws_id, actor="client", via="public")
 
 
-def ip_of(req: Request):
-    return req.headers.get("x-forwarded-for", req.client.host if req.client else "").split(",")[0].strip()
+ip_of = client_ip
 
 
 async def ws_by_slug(slug):
@@ -69,23 +70,8 @@ async def logo(slug: str):
     key = ws.get("theme", {}).get("logo_key")
     if not key:
         raise not_found("That logo")
-    data = open(vendors.storage_path(key), "rb").read()
-    return RawResponse(data, media_type="image/png" if key.endswith(".png") else "image/svg+xml" if key.endswith(".svg") else "image/jpeg")
-
-
-async def data_url_to_key(ws_id, data_url, name):
-    if not data_url:
-        return None
-    m = re.match(r"^data:([\w/+.-]+);base64,(.+)$", data_url, re.S)
-    if not m:
-        raise AppError("invalid", "That file couldn't be read.", 400)
-    raw = base64.b64decode(m.group(2))
-    if len(raw) > 8 * 1024 * 1024:
-        raise AppError("too_big", "Files can be up to 8 MB.", 400)
-    if m.group(1) not in ("image/png", "image/jpeg", "image/webp", "application/pdf"):
-        raise AppError("invalid", "Please upload an image or a PDF.", 400)
-    ext = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "application/pdf": "pdf"}[m.group(1)]
-    return await vendors.storage_put(ws_id, f"{name}.{ext}", raw, m.group(1))
+    data = await vendors.storage_get(key)
+    return RawResponse(data, media_type=mime_of(key, "image/jpeg"), headers={"Cache-Control": "public, max-age=300"})
 
 
 # ---------------- lead forms ----------------
@@ -132,22 +118,8 @@ async def public_otp(ws_slug: str, body: dict, request: Request):
 
 
 async def send_code(key, ip):
-    db = get_db()
-    last = await db.otp_codes.find_one({"phone": key}, sort=[("created_at", -1)])
-    if last and aware(last["created_at"]) > now() - timedelta(seconds=30):
-        raise AppError("cooldown", "Please wait 30 seconds before asking for a new code.", 429)
-    code = f"{random.SystemRandom().randint(0, 999999):06d}"
-    await db.otp_codes.insert_one({"_id": new_id(), "phone": key, "code_hash": hashlib.sha256(code.encode()).hexdigest(), "tries": 0,
-                                   "ip": ip, "created_at": now(), "expires_at": now() + timedelta(minutes=10), "used": False})
-    if "@" in key:
-        await vendors.email_send(None, key, "Your code", f"<p>Your code is <b>{code}</b>. It expires in 10 minutes.</p>")
-        ch = "email"
-    else:
-        ch = await vendors.otp_send(key, code)
-    out = {"ok": True, "channel": ch}
-    if settings.QA_MODE:
-        out["qa_code"] = code
-    return out
+    """Phone or email code for clients. Same rate limits as consultant login."""
+    return await issue_otp(key, ip)
 
 
 # ---------------- booking pages ----------------
@@ -579,7 +551,7 @@ async def file_asset(tok: str, block_id: str):
     b = next((b for _, b in F.blocks_of(v["pages"]) if b["id"] == block_id and b.get("key")), None)
     if not b:
         raise not_found("That image")
-    return RawResponse(open(vendors.storage_path(b["key"]), "rb").read(), media_type="image/*")
+    return RawResponse(await vendors.storage_get(b["key"]), media_type=mime_of(b["key"], "image/png"))
 
 
 # ---------------- invoice pages and downloads ----------------
@@ -650,7 +622,7 @@ async def quote_pdf(tok: str):
     f, ctx = await file_by_token(tok)
     if f.get("kind") != "quote":
         raise not_found("That quote")
-    return RawResponse(render_pdf(await quote_html(ctx, f)), media_type="application/pdf",
+    return RawResponse(await render_pdf(await quote_html(ctx, f)), media_type="application/pdf",
                        headers={"Content-Disposition": "inline; filename=quote.pdf"})
 
 
@@ -723,13 +695,14 @@ async def receipt_pdf(tok: str, item_id: str):
         raise not_found("That receipt")
     ws = await ctx.ws()
     c = await ctx.data.contacts.get(inv.get("contact_id") or "") or {}
-    html = (f"<div class='kicker'>{ws['profile'].get('practice_name') or ws['name']}</div><h2>Payment receipt</h2>"
-            f"<p>Received from <b>{c.get('name', '')}</b> on {fmt_dt(s['paid_at'])}.</p>"
-            f"<table><tr><th>Invoice</th><th>For</th><th class='num'>Amount</th></tr><tr><td>{inv.get('number')}</td><td>{s['label']}</td>"
+    from html import escape as _x
+    html = (f"<div class='kicker'>{_x(ws['profile'].get('practice_name') or ws['name'])}</div><h2>Payment receipt</h2>"
+            f"<p>Received from <b>{_x(c.get('name', ''))}</b> on {fmt_dt(s['paid_at'])}.</p>"
+            f"<table><tr><th>Invoice</th><th>For</th><th class='num'>Amount</th></tr><tr><td>{_x(str(inv.get('number') or ''))}</td><td>{_x(s['label'])}</td>"
             f"<td class='num'>{inr(s['paid_paise'])}</td></tr>"
             + (f"<tr><td></td><td>TDS deducted by client</td><td class='num'>{inr(s['tds_paise'])}</td></tr>" if s.get("tds_paise") else "")
             + "</table><p class='muted'>Paid directly to the consultant.</p>")
-    return RawResponse(render_pdf(html), media_type="application/pdf",
+    return RawResponse(await render_pdf(html), media_type="application/pdf",
                        headers={"Content-Disposition": f"inline; filename=receipt-{(inv.get('number') or '').replace('/', '-')}.pdf"})
 
 
@@ -738,7 +711,7 @@ async def download(tok: str):
     u = await get_db().uploads.find_one({"token": tok, "deleted_at": None})
     if not u or not u.get("client_visible"):
         raise not_found("That file")
-    data = vendors.storage_get(u["key"])
+    data = await vendors.storage_get(u["key"])
     mt = "application/pdf" if u["key"].endswith(".pdf") else "application/octet-stream"
     return RawResponse(data, media_type=mt, headers={"Content-Disposition": f"inline; filename=\"{u['name']}\""})
 

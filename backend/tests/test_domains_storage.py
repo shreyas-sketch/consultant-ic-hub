@@ -5,7 +5,7 @@ from app.db import get_db
 
 
 def data_url(n_bytes):
-    return "data:application/pdf;base64," + base64.b64encode(b"x" * n_bytes).decode()
+    return "data:application/pdf;base64," + base64.b64encode(b"%PDF-" + b"x" * max(0, n_bytes - 5)).decode()
 
 
 async def test_storage_limit_blocks_upload_when_full():
@@ -75,7 +75,7 @@ async def test_reopen_lets_client_change_answers_then_completes_again():
 async def test_practice_subdomain_serves_client_pages_but_app_host_does_not(monkeypatch):
     import os
     import pytest
-    from app import main as server
+    from app.api.routes import frontend as server
     from app.core import settings
     if not os.path.isfile(os.path.join(server.FRONTEND, "client.html")):
         pytest.skip("screens not built")

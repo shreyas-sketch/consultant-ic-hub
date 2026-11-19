@@ -538,13 +538,13 @@ async def check_fully_signed(ctx, f, blk, rendered):
             if s.get("image_key"):
                 import base64
                 try:
-                    raw = open(vendors.storage_path(s["image_key"]), "rb").read()
+                    raw = await vendors.storage_get(s["image_key"])
                     d["image"] = "data:image/png;base64," + base64.b64encode(raw).decode()
                 except Exception:
                     d["image"] = None
             d["signed_at"] = aware(s["signed_at"])
             imgs.append(d)
-        pdf = contract_pdf(ws["profile"].get("practice_name") or ws["name"], f["title"], rendered, imgs, contract_hash(rendered))
+        pdf = await contract_pdf(ws["profile"].get("practice_name") or ws["name"], f["title"], rendered, imgs, contract_hash(rendered))
         key = await vendors.storage_put(ctx.ws_id, "signed-contract.pdf", pdf, "application/pdf")
         up = await ctx.data.uploads.insert({"project_id": f["project_id"], "file_id": f["_id"], "name": f"{f['title']} — signed.pdf",
                                             "key": key, "kind": "signed_contract", "size": len(pdf), "client_visible": True,

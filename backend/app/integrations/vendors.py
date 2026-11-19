@@ -34,18 +34,7 @@ def _off(name):
 
 # ---------------- token encryption for connected accounts ----------------
 
-def _fernet():
-    from cryptography.fernet import Fernet
-    key = settings.TOKEN_KEY or base64.urlsafe_b64encode(hashlib.sha256(settings.SECRET_KEY.encode()).digest())
-    return Fernet(key)
-
-
-def encrypt(obj) -> str:
-    return _fernet().encrypt(json.dumps(obj).encode()).decode()
-
-
-def decrypt(s: str):
-    return json.loads(_fernet().decrypt(s.encode()).decode())
+from app.core.security import decrypt, encrypt  # noqa: E402,F401  (re-exported)
 
 
 # ---------------- WhatsApp / SMS / OTP ----------------
@@ -386,45 +375,48 @@ async def enrich(email, name):
 
 
 # ---------------- File storage ----------------
+# The storage backend (local disk or an S3-compatible bucket) is in storage.py.
+# These wrappers add the per-workspace quota on top.
 
 async def storage_put(ws_id, name, data: bytes, content_type="application/octet-stream", count=True):
     """count=False for files we make for the consultant (export ZIPs): they don't use their storage."""
-    import os
+    from app.integrations import storage
     if ws_id and count:
         from app.core import limits
         db = get_db()
-        ws = await db.workspaces.find_one({"_id": ws_id}, {"storage_bytes": 1, "created_at": 1}) or {}
+        ws = await db.workspaces.find_one({"_id": ws_id}, {"created_at": 1}) or {}
         cap_mb = await limits.value(ws_id, "storage_mb", ws.get("created_at"))
-        used = int(ws.get("storage_bytes") or 0)
-        if cap_mb is not None and used + len(data) > cap_mb * 1024 * 1024:
+        # Reserve the space atomically, so parallel uploads can't overshoot the cap.
+        flt = {"_id": ws_id}
+        if cap_mb is not None:
+            cap = cap_mb * 1024 * 1024 - len(data)
+            if cap < 0:
+                cap = -1  # bigger than the whole allowance: nothing can match
+            flt["$or"] = [{"storage_bytes": {"$exists": False}}, {"storage_bytes": {"$lte": cap}}]
+        res = await db.workspaces.update_one(flt, {"$inc": {"storage_bytes": len(data)}})
+        if cap_mb is not None and not res.modified_count:
             raise AppError("limit", f"Your file storage is full ({cap_mb // 1024 if cap_mb >= 1024 else cap_mb} "
                                     f"{'GB' if cap_mb >= 1024 else 'MB'}). Remove old files or ask us for more space.", 402,
                            {"key": "storage_mb"})
-        await db.workspaces.update_one({"_id": ws_id}, {"$inc": {"storage_bytes": len(data)}})
-    key = f"{ws_id}/{new_id()}-{name}"
-    if mode("storage") != "live" or not settings.S3_BUCKET:
-        path = os.path.join(settings.UPLOAD_DIR, key)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as f:
-            f.write(data)
-        return key
-    import boto3  # noqa: live only
-    boto3.client("s3").put_object(Bucket=settings.S3_BUCKET, Key=key, Body=data, ContentType=content_type)
+    key = f"{ws_id}/{new_id()}-{storage.safe_name(name)}"
+    try:
+        await storage.backend().put(key, data, content_type)
+    except Exception:
+        if ws_id and count:
+            await get_db().workspaces.update_one({"_id": ws_id}, {"$inc": {"storage_bytes": -len(data)}})
+        raise
     return key
 
 
-def storage_path(key):
-    import os
-    return os.path.join(settings.UPLOAD_DIR, key)
+async def storage_get(key) -> bytes:
+    """Read a stored file from whichever backend is configured."""
+    from app.integrations import storage
+    return await storage.backend().get(key)
 
 
-def storage_get(key) -> bytes:
-    """Read a stored file, local or S3."""
-    import os
-    path = storage_path(key)
-    if os.path.isfile(path):
-        return open(path, "rb").read()
-    if mode("storage") == "live" and settings.S3_BUCKET:
-        import boto3  # noqa: live only
-        return boto3.client("s3").get_object(Bucket=settings.S3_BUCKET, Key=key)["Body"].read()
-    raise FileNotFoundError(key)
+async def storage_delete(ws_id, key, size: int = 0):
+    """Delete a stored file and give its space back to the workspace."""
+    from app.integrations import storage
+    await storage.backend().delete(key)
+    if ws_id and size:
+        await get_db().workspaces.update_one({"_id": ws_id}, {"$inc": {"storage_bytes": -int(size)}})

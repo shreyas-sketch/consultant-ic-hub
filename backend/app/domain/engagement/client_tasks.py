@@ -181,7 +181,7 @@ async def public_reply(ctx, t, text):
 
 
 async def public_upload(ctx, t, name, data):
-    from app.api.routes.public import data_url_to_key
+    from app.services.uploads import data_url_to_key
     key = await data_url_to_key(ctx.ws_id, data, "client-task")
     up = await ctx.data.uploads.insert({"project_id": t["project_id"], "name": (name or "Upload")[:120], "key": key, "kind": "client_upload",
                                         "client_visible": True, "by_client": True, "token": token(18), "client_task_id": t["_id"]})

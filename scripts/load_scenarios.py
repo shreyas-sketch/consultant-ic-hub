@@ -28,7 +28,7 @@ from app.core.util import new_id, now  # noqa: E402
 
 
 async def owner(i):
-    from app.api.routes.auth import login_phone
+    from app.auth import login_phone
     phone = f"+9197{i:08d}"
     await get_db().invites.insert_one({"_id": new_id(), "phone": phone, "status": "invited", "created_at": now(), "via": "admin"})
     u = await login_phone(phone)

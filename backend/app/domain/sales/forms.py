@@ -142,7 +142,7 @@ async def submit(ctx, form, body: dict, ip: str):
     if not norm_phone_soft(contact.get("phone")) and not (contact.get("email") or "").strip():
         raise AppError("invalid", "Please add a mobile number or email so we can reply.", 400)
     if form.get("otp_required"):
-        from app.api.routes.auth import check_otp, norm_phone
+        from app.auth import check_otp, norm_phone
         await check_otp(norm_phone(contact.get("phone", "")), body.get("otp", ""))
     answers = body.get("answers") or {}
     labels = {}

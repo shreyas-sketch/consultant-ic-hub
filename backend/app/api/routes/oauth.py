@@ -213,7 +213,7 @@ def _err_redirect(redirect_uri, error, state, desc=None):
 
 @router.get("/oauth/authorize")
 async def authorize(request: Request):
-    from app.api.routes.auth import current_user_or_none
+    from app.auth import current_user_or_none
     q = request.query_params
     try:
         client = await client_for(q.get("client_id", ""))
@@ -249,7 +249,7 @@ async def _pending(rid):
 
 
 def _user_dep():
-    from app.api.routes.auth import current_user
+    from app.auth import current_user
     return current_user
 
 

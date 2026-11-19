@@ -1,5 +1,19 @@
-"""PDFs (HTML + WeasyPrint), in the light print version of the design system."""
+"""PDFs (HTML + WeasyPrint), in the light print version of the design system.
+
+Rendering is CPU-bound and synchronous, so it runs on one dedicated thread:
+the event loop keeps serving requests while a PDF renders.
+
+WeasyPrint would otherwise fetch any URL in the document (file://, internal
+hosts). `_fetch` only allows inline data: URLs, and every client-supplied value
+is HTML-escaped before it goes into a document.
+"""
+import asyncio
+import html
+from concurrent.futures import ThreadPoolExecutor
+
 from app.core.util import fmt_dt
+
+_pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="pdf")
 
 PRINT_CSS = """
 @page { size: A4; margin: 22mm 18mm; @bottom-right { content: counter(page) " / " counter(pages); font-size: 9pt; color: #5A5D66; } }
@@ -20,29 +34,44 @@ th { font-size: 8.5pt; color: #5A5D66; text-transform: uppercase; letter-spacing
 """
 
 
-def render_pdf(body_html: str) -> bytes:
+def _fetcher():
+    """Only inline data: URLs (signatures, logos). No file://, no network."""
+    from weasyprint.urls import URLFetcher
+    return URLFetcher(allowed_protocols={"data"}, allow_redirects=False, timeout=2)
+
+
+def render_pdf_sync(body_html: str) -> bytes:
     from weasyprint import HTML
     doc = f"<html><head><meta charset='utf-8'><style>{PRINT_CSS}</style></head><body>{body_html}</body></html>"
-    return HTML(string=doc).write_pdf()
+    return HTML(string=doc, url_fetcher=_fetcher()).write_pdf()
 
 
-def contract_pdf(practice_name, title, contract_html, signatures, doc_hash):
+async def render_pdf(body_html: str) -> bytes:
+    return await asyncio.get_running_loop().run_in_executor(_pool, render_pdf_sync, body_html)
+
+
+def _x(v) -> str:
+    return html.escape(str(v or ""), quote=True)
+
+
+async def contract_pdf(practice_name, title, contract_html, signatures, doc_hash):
     sigs = ""
     for s in signatures:
-        mark = (f"<img src='{s['image']}' style='height:46pt'/>" if s.get("image") else f"<div class='typed'>{s['name']}</div>")
-        sigs += (f"<div class='sig'>{mark}<div><b>{s['name']}</b> · {s['role'].title()}</div>"
+        img = s.get("image") or ""
+        mark = (f"<img src='{_x(img)}' style='height:46pt'/>" if img.startswith("data:image/") else f"<div class='typed'>{_x(s['name'])}</div>")
+        sigs += (f"<div class='sig'>{mark}<div><b>{_x(s['name'])}</b> · {_x(s['role'].title())}</div>"
                  f"<div class='muted'>Signed {fmt_dt(s['signed_at'])}</div></div>")
     rows = "".join(
-        f"<tr><td>{s['name']}<br>{s.get('phone') or ''} {s.get('email') or ''}</td><td>{s['role'].title()}</td>"
-        f"<td>{fmt_dt(s['signed_at'])}<br>{s['signed_at'].isoformat()} UTC</td><td>{s.get('ip', '')}<br>{(s.get('device') or '')[:80]}</td>"
-        f"<td>{'OTP verified ' + (s.get('otp_channel') or '') if s.get('otp_verified') else 'Logged-in consultant'}</td></tr>"
+        f"<tr><td>{_x(s['name'])}<br>{_x(s.get('phone'))} {_x(s.get('email'))}</td><td>{_x(s['role'].title())}</td>"
+        f"<td>{fmt_dt(s['signed_at'])}<br>{s['signed_at'].isoformat()} UTC</td><td>{_x(s.get('ip'))}<br>{_x((s.get('device') or '')[:80])}</td>"
+        f"<td>{'OTP verified ' + _x(s.get('otp_channel')) if s.get('otp_verified') else 'Logged-in consultant'}</td></tr>"
         for s in signatures)
     audit = (f"<div class='audit'><div class='kicker'>Audit trail</div><h2>Signing record</h2>"
-             f"<p class='muted'>Document fingerprint (SHA-256 of the exact contract text signed):<br><b>{doc_hash}</b></p>"
+             f"<p class='muted'>Document fingerprint (SHA-256 of the exact contract text signed):<br><b>{_x(doc_hash)}</b></p>"
              f"<table><tr><th>Signer</th><th>Role</th><th>Time (IST / UTC)</th><th>IP and device</th><th>Check</th></tr>{rows}</table></div>")
-    body = (f"<div class='kicker'>{practice_name}</div><div class='rule'></div>{contract_html}"
+    body = (f"<div class='kicker'>{_x(practice_name)}</div><div class='rule'></div>{contract_html}"
             f"<div class='rule'></div>{sigs}{audit}")
-    return render_pdf(body)
+    return await render_pdf(body)
 
 
 # ---------------- invoices and quotes ----------------
@@ -92,4 +121,4 @@ async def invoice_html(ctx, inv) -> str:
 
 
 async def invoice_pdf(ctx, inv) -> bytes:
-    return render_pdf(await invoice_html(ctx, inv))
+    return await render_pdf(await invoice_html(ctx, inv))

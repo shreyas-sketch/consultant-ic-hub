@@ -25,7 +25,7 @@ async def seed():
     db = get_db()
     if await db.users.find_one({"phone": PERSONAS["owner"]}):
         return
-    from app.api.routes.auth import login_phone
+    from app.auth import login_phone
     for role, phone in PERSONAS.items():
         await db.invites.insert_one({"_id": new_id(), "phone": phone, "name": {"owner": "Priya Mehta", "new": "Rahul Verma"}.get(role, ""),
                                      "note": "QA persona", "invited_by": "seed", "status": "invited", "created_at": now(), "via": "admin"})

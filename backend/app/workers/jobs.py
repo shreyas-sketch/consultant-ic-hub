@@ -1,5 +1,7 @@
 """Scheduled jobs. One registry, schedules in IST, every run logged, and a
 database lease lock so each job runs once even with several workers."""
+import asyncio
+import logging
 import time
 import traceback
 from datetime import timedelta
@@ -8,9 +10,14 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+from app.core import settings
 from app.core.context import system_ctx
 from app.db import get_db
 from app.core.util import IST, aware, month_key, new_id, now
+
+log = logging.getLogger("app.jobs")
+BATCH = 500             # documents per round trip when a job streams a collection
+LEASE_SECONDS = 300     # renewed every 100 s while the job runs
 
 
 async def lease(name, seconds):
@@ -28,7 +35,36 @@ async def release(name):
 
 
 async def workspaces():
-    return await get_db().workspaces.find({"read_only": {"$ne": True}}, {"_id": 1}).to_list(None)
+    """Active workspace ids, streamed (never the whole collection in memory)."""
+    async for w in get_db().workspaces.find({"read_only": {"$ne": True}}, {"_id": 1}).batch_size(BATCH):
+        yield w
+
+
+async def for_each_workspace(fn, concurrency=None):
+    """Run fn(ws_id) for every active workspace, a few at a time.
+
+    One failing workspace is logged and skipped; it never stops the others.
+    Returns the sum of what fn returned (items handled).
+    """
+    sem = asyncio.Semaphore(concurrency or settings.JOB_WS_CONCURRENCY)
+    total = 0
+    pending = set()
+
+    async def one(ws_id):
+        nonlocal total
+        async with sem:
+            try:
+                total += await fn(ws_id) or 0
+            except Exception:
+                log.exception("job step failed for workspace %s", ws_id)
+
+    async for w in workspaces():
+        pending.add(asyncio.create_task(one(w["_id"])))
+        if len(pending) >= 4 * (concurrency or settings.JOB_WS_CONCURRENCY):
+            done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+    if pending:
+        await asyncio.wait(pending)
+    return total
 
 
 # ---------------- the jobs ----------------
@@ -85,7 +121,7 @@ async def j_sessions():
     for s in await db.sessions.find({"status": "held", "hold_expires_at": {"$lt": now()}}).to_list(500):
         await cancel_session(system_ctx(s["workspace_id"]), s, by="hold expired", tell_client=False)
         n += 1
-    for s in await db.sessions.find({"status": "booked", "start": {"$gt": now() - timedelta(hours=2), "$lt": now() + timedelta(days=2)}}).to_list(2000):
+    async for s in db.sessions.find({"status": "booked", "start": {"$gt": now() - timedelta(hours=2), "$lt": now() + timedelta(days=2)}}).batch_size(BATCH):
         ctx = system_ctx(s["workspace_id"])
         st = await ctx.data.session_types.get(s["type_id"]) or {}
         start = aware(s["start"])
@@ -121,7 +157,7 @@ async def j_money():
     from app.core.events import emit, log
     db = get_db()
     n = 0
-    for inv in await db.invoices.find({"status": {"$in": ["sent", "partially_paid"]}, "deleted_at": None}).to_list(5000):
+    async for inv in db.invoices.find({"status": {"$in": ["sent", "partially_paid"]}, "deleted_at": None}).batch_size(BATCH):
         ctx = system_ctx(inv["workspace_id"])
         ws = await ctx.ws()
         lf = ws["invoice"].get("late_fee", {})
@@ -162,7 +198,7 @@ async def j_recurring():
     t = now().astimezone(IST)
     mk = month_key()
     n = 0
-    for r in await db.recurring_invoices.find({"active": True, "deleted_at": None}).to_list(2000):
+    async for r in db.recurring_invoices.find({"active": True, "deleted_at": None, "last_month": {"$ne": mk}}).batch_size(BATCH):
         if r.get("last_month") == mk or t.day < r["day_of_month"]:
             continue
         if r.get("start_month") and mk < r["start_month"]:
@@ -191,16 +227,14 @@ async def j_recurring():
 
 async def _agent_all(agent, **kw):
     from app.agents.runtime import AgentOff, run_agent
-    n = 0
-    for w in await workspaces():
+
+    async def one(ws_id):
         try:
-            await run_agent(w["_id"], agent, trigger={"kind": "schedule"}, **kw)
-            n += 1
+            await run_agent(ws_id, agent, trigger={"kind": "schedule"}, **kw)
+            return 1
         except AgentOff:
-            pass
-        except Exception:
-            traceback.print_exc()
-    return n
+            return 0
+    return await for_each_workspace(one, concurrency=settings.JOB_AGENT_CONCURRENCY)
 
 
 async def j_daily_brief():
@@ -216,13 +250,7 @@ async def j_collections():
 
 
 async def _each_ws(fn):
-    n = 0
-    for w in await workspaces():
-        try:
-            n += await fn(w["_id"]) or 0
-        except Exception:
-            traceback.print_exc()
-    return n
+    return await for_each_workspace(fn)
 
 
 async def j_budgets():
@@ -280,7 +308,7 @@ async def j_exports():
         try:
             n += 1 if await build_export(ex) else 0
         except Exception:
-            traceback.print_exc()
+            log.exception("export %s failed", ex["_id"])
             await get_db().exports.update_one({"_id": ex["_id"]}, {"$set": {"status": "failed"}})
     return n
 
@@ -299,7 +327,7 @@ async def j_project_dates():
     db = get_db()
     today = now().astimezone(IST).date()
     n = 0
-    for a in await db.automations.find({"active": True, "deleted_at": None, "trigger.type": {"$in": ["project.start_date", "project.end_date"]}}).to_list(5000):
+    async for a in db.automations.find({"active": True, "deleted_at": None, "trigger.type": {"$in": ["project.start_date", "project.end_date"]}}).batch_size(BATCH):
         ctx = system_ctx(a["workspace_id"])
         field = "start_date" if a["trigger"]["type"] == "project.start_date" else "end_date"
         target = (today - timedelta(days=int(a["trigger"].get("offset_days", 0)))).isoformat()
@@ -314,7 +342,7 @@ async def j_inbox_finder():
     from app.integrations import vendors
     db = get_db()
     n = 0
-    for conn in await db.connections.find({"provider": {"$in": ["gmail", "outlook"]}, "lead_finder": True}).to_list(1000):
+    async for conn in db.connections.find({"provider": {"$in": ["gmail", "outlook"]}, "lead_finder": True}).batch_size(BATCH):
         ctx = system_ctx(conn["workspace_id"])
         since = aware(conn.get("last_scan") or now() - timedelta(days=1))
         try:
@@ -358,24 +386,37 @@ JOBS = {
 }
 
 
+async def _keep_lease(name, seconds):
+    """Renew the job's lease while it runs, so a long job is never picked up twice."""
+    while True:
+        await asyncio.sleep(seconds / 3)
+        await get_db().job_locks.update_one({"_id": name}, {"$set": {"until": now() + timedelta(seconds=seconds)}})
+
+
 async def run_job(name, force=False):
     fn, sched, label = JOBS[name]
-    if not await lease(f"job:{name}", 600):
+    lock = f"job:{name}"
+    if not await lease(lock, LEASE_SECONDS):
         return {"ok": False, "skipped": "running elsewhere"}
     db = get_db()
     rid = new_id()
     t0 = time.time()
+    keeper = asyncio.create_task(_keep_lease(lock, LEASE_SECONDS))
     await db.job_runs.insert_one({"_id": rid, "job": name, "started_at": now(), "status": "running"})
     try:
         n = await fn()
-        await db.job_runs.update_one({"_id": rid}, {"$set": {"status": "ok", "items": n, "seconds": round(time.time() - t0, 2)}})
+        secs = round(time.time() - t0, 2)
+        await db.job_runs.update_one({"_id": rid}, {"$set": {"status": "ok", "items": n, "seconds": secs}})
+        if n:
+            log.info("job done", extra={"fields": {"job": name, "items": n, "seconds": secs}})
         return {"ok": True, "items": n}
     except Exception as e:
         await db.job_runs.update_one({"_id": rid}, {"$set": {"status": "error", "error": str(e)[:500], "seconds": round(time.time() - t0, 2)}})
-        traceback.print_exc()
+        log.exception("job failed: %s", name)
         return {"ok": False, "error": str(e)}
     finally:
-        await release(f"job:{name}")
+        keeper.cancel()
+        await release(lock)
 
 
 def start_scheduler():

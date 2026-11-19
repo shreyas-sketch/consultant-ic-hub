@@ -164,7 +164,7 @@ class TeamAdd(P):
 
 @action("team.add", "internal", TeamAdd, roles=ADMINS, desc="Add a team member by mobile number (they count as invited).")
 async def team_add(ctx, p: TeamAdd):
-    from app.api.routes.auth import norm_phone
+    from app.auth import norm_phone
     if p.role not in ROLES or p.role == "owner":
         raise AppError("invalid", "Please choose Admin, Manager, Member or Collaborator.", 400)
     phone = norm_phone(p.phone)

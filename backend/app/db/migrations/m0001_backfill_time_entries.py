@@ -1,8 +1,10 @@
-"""Data migrations run at start. Each is safe to repeat."""
+"""0001: older time entries get a billing status and a rate snapshot (add-on A2). Safe to repeat."""
 from app.domain.billing.rates import resolve
 
+ID = "0001_backfill_time_entries"
 
-async def backfill_time_entries(db):
+
+async def up(db):
     """Migration: older entries get a billing status and a rate snapshot. Runs at start; safe to repeat."""
     from app.core.context import system_ctx
     n = 0
