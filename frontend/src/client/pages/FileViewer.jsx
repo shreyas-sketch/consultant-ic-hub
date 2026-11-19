@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
-import { Fail, Footer, Header, Loading, Sheet, SlotPicker, cget, cpost, fmtDate, inr, myTz, toDataUrl, useBrand, useLoad } from "../kit";
-import { Question } from "./Public";
+import { Fail, Footer, Header, Loading, Sheet, SlotPicker, cget, cpost, fmtDate, inr, myTz, toDataUrl, useBrand, useLoad } from "@/client/lib/kit";
+import { Question } from "@/client/pages/Public";
 
 /** Review -> choose -> sign -> pay -> book, one page at a time, one big button at the bottom. */
 export function FileViewer({ preview }) {

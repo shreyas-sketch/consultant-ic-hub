@@ -1,11 +1,11 @@
 import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes, useParams } from "react-router";
-import "./client.css";
-import { Booking, FormPage } from "./pages/Public";
-import { FileViewer, InvoicePage } from "./pages/FileViewer";
-import Portal from "./pages/Portal";
-import TaskPage from "./pages/TaskPage";
+import "@/client/styles/client.css";
+import { Booking, FormPage } from "@/client/pages/Public";
+import { FileViewer, InvoicePage } from "@/client/pages/FileViewer";
+import Portal from "@/client/pages/Portal";
+import TaskPage from "@/client/pages/TaskPage";
 
 function Download() {
   const { token } = useParams();

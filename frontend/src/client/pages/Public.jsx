@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
-import { Fail, Footer, Header, Loading, SlotPicker, cget, cpost, fmtDay, fmtTime, inr, myTz, slugOf, useBrand, useLoad } from "../kit";
+import { Fail, Footer, Header, Loading, SlotPicker, cget, cpost, fmtDay, fmtTime, inr, myTz, slugOf, useBrand, useLoad } from "@/client/lib/kit";
 
 export function FormPage() {
   const params = useParams(); const slug = slugOf(params); const { form } = params;
@@ -77,7 +77,7 @@ export function Question({ q, v, set, locked }) {
       <span className="mb-1.5 block font-bold">{q.label}{q.required && " *"}</span>
       {q.kind === "long" ? <textarea className="c-in min-h-[110px]" disabled={locked} value={v || ""} onChange={(e) => set(e.target.value)} />
         : ["single", "multi"].includes(q.kind) ? <div className="flex flex-wrap gap-2">{(q.options || []).map(opt)}</div>
-        : q.kind === "file" ? (v?.name ? <span className="c-muted">Uploaded: {v.name}</span> : <input type="file" disabled={locked} onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const { toDataUrl } = await import("../kit"); set(await toDataUrl(f)); } }} />)
+        : q.kind === "file" ? (v?.name ? <span className="c-muted">Uploaded: {v.name}</span> : <input type="file" disabled={locked} onChange={async (e) => { const f = e.target.files?.[0]; if (f) { const { toDataUrl } = await import("@/client/lib/kit"); set(await toDataUrl(f)); } }} />)
         : <input className="c-in" disabled={locked} type={q.kind === "date" ? "date" : "text"} inputMode={q.kind === "number" ? "decimal" : undefined} value={v || ""} onChange={(e) => set(e.target.value)} />}
     </label>
   );

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useParams } from "react-router";
-import { Fail, Footer, Header, Loading, SlotPicker, cget, cpost, fmtDate, fmtDay, fmtTime, inr, myTz, toDataUrl, slugOf, useBrand, useLoad } from "../kit";
+import { Fail, Footer, Header, Loading, SlotPicker, cget, cpost, fmtDate, fmtDay, fmtTime, inr, myTz, toDataUrl, slugOf, useBrand, useLoad } from "@/client/lib/kit";
 
 /** One portal per client, with all their projects. */
 export default function Portal() {
