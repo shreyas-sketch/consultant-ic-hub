@@ -1,6 +1,6 @@
 # Features and limits
 
-Generated from the limits registry (`backend/core/limits.py`). No plans yet: one set of values, "Everyone".
+Generated from the limits registry (`backend/app/core/limits.py`). No plans yet: one set of values, "Everyone".
 Change any value in Admin › Limits, for everyone or only accounts created from now on, or per practice in Admin › Accounts.
 
 | Limit key | What it limits | Type | Launch value |

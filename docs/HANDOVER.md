@@ -4,6 +4,8 @@ Plain status of what's built, what's tested, and what's left before real consult
 
 Updated 13 Nov 2026: the add-ons from the Bonsai study are now built (section "Add-ons" below).
 
+Updated 19 Nov 2026: restructured for production on Railway (section "Restructure for production" below). No product behaviour changed; all 225 actions and every screen are as before.
+
 ## What's built
 
 All steps of the main playbook, plus all seven add-on phases.
@@ -51,6 +53,25 @@ Counts: 225 actions, 9 agents, 31 limit keys, 21 consultant screens (plus 13 set
 - PKCE (S256) required. `resource` binds tokens to our MCP endpoint. `iss` returned on every authorisation response. 15-minute access tokens, rotating refresh tokens (reuse signs the chain out).
 - The stateless protocol (`server/discover`, version in `_meta`) is supported alongside the older `initialize` handshake.
 
+## Restructure for production (19 Nov 2026)
+
+- **Layout.** Backend is one package, `backend/app`, in layers (api → auth/domain → agents/automations → integrations/services → db/core); a test enforces the direction. Frontend is feature-based with a shared layer and an `@/` alias. See `docs/ARCHITECTURE.md`.
+- **Deploy.** Railway: web (`railway.json`, pre-deploy migrations, readiness check) and worker (`railway.worker.json`). See `docs/DEPLOY_RAILWAY.md`.
+- **Database.** 164 declared indexes (tenant-first compound, token and webhook lookups, TTL for short-lived data), versioned migrations, pooled client, streamed job scans, bounded per-workspace concurrency, renewed job leases.
+- **Fixed on the way:**
+  - Jobs only processed the first N matches (`to_list(5000)` and similar); the rest were silently skipped.
+  - Each job's first run was skipped and then locked for 10 minutes (the lease read the pre-upsert document).
+  - Storage: callers read local paths directly, so S3 mode would have failed; boto3 blocked the event loop.
+  - PDFs: client-typed names and the browser's User-Agent went into the contract PDF unescaped, and the renderer would fetch `file://` and network URLs. Now escaped, and only `data:` URLs load. Rendering no longer blocks other requests.
+  - The client OTP endpoint had no per-IP limit (SMS-pumping risk).
+  - OAuth connect state never expired and was reusable.
+  - Public token lookups and webhook lookups had no index (full scans).
+  - Workspace slugs had no unique index (a race could duplicate one).
+  - Upload type was trusted from the browser; bytes are now checked.
+  - The SPA catch-all could be asked for paths outside the build folder.
+  - Every client page downloaded the rich-text editor (~94 kB gzip).
+- **Not verified here:** the Docker image could not be built in this environment (no outbound access from the build container). CI builds it on every push; build it once before the first Railway deploy.
+
 ## How to run
 
 See `README.md`. QA mode needs nothing but Python and Node.
@@ -84,7 +105,7 @@ Legal and CA (outside the code):
 - [ ] Terms, privacy policy, and a data processing note (DPDP Act 2023).
 - [ ] CA to review the invoice format, TDS handling, GST invoice fields and late-fee wording.
 - [ ] CA: GST and TDS on retainer invoices raised in advance (before the work is done).
-- [ ] Lawyer to review the default agreement and NDA text in `backend/actions/defaults.py`, and add a retainer clause (rollover, extra time, notice).
+- [ ] Lawyer to review the default agreement and NDA text in `backend/app/domain/defaults.py`, and add a retainer clause (rollover, extra time, notice).
 - [ ] Confirm OTP signing with an audit page is enough for your clients' contracts (it suits most service agreements; some documents need Aadhaar eSign).
 
 ## Known gaps
@@ -93,6 +114,6 @@ Legal and CA (outside the code):
 - **Foreign-currency invoices.** A rate card can be in another currency, but invoices are raised in rupees. Time priced in another currency is refused at "Invoice unbilled time" with a plain message.
 - **Gmail thread sync.** Client replies come back through our reply-to address. Replies sent to the consultant's own Gmail thread are not synced yet.
 - **Real-database load test.** Only run on the in-memory database (see `docs/LOAD_TEST.md`).
-- **Storage.** The limit is enforced on upload, but deleting a file doesn't give space back yet.
+- **Storage.** The limit is enforced (atomically) on upload. `vendors.storage_delete()` gives space back, but no screen deletes uploads yet.
 - **Retainer plan changes** (fee, hours, rules) take effect from the next period, by design. There's no way to change the current period's plan.
 - **Seed.** The QA "staff" persona also gets an empty practice of its own. QA only.

@@ -16,7 +16,7 @@ These numbers are from an in-memory fake of MongoDB in one Python process. They 
 
 - On the 5,000-runs test, 67% of the time was spent inside the fake database itself (profiled). Real MongoDB with indexes is usually much faster for this kind of claim-and-update work, but **this has not been measured**.
 - The tick was rewritten to claim runs in batches and run 25 at a time. That took the same test from 504 s to 178 s.
-- If real MongoDB still misses the bar: run 2–3 workers (each claims its own runs safely), or raise `TICK_CONCURRENCY` in `automations/engine.py`.
+- If real MongoDB still misses the bar: run 2–3 workers (each claims its own runs safely), or raise `TICK_CONCURRENCY` in `app/automations/engine.py`.
 
 ## To do before launch: real-database run
 
@@ -26,8 +26,8 @@ These numbers are from an in-memory fake of MongoDB in one Python process. They 
    ```bash
    cd backend
    export QA_MODE=true QA_DB=mongo MONGO_URL=mongodb+srv://... DB_NAME=loadtest_throwaway
-   RUN_JOBS=false uvicorn server:app --workers 2 --port 8000
-   python worker.py
+   RUN_JOBS=false uvicorn app.main:app --workers 2 --port 8000
+   python -m app.workers
    ```
 
 3. Same three scenarios on the real database: `QA_DB=mongo MONGO_URL=... DB_NAME=loadtest_throwaway python ../scripts/load_scenarios.py`

@@ -1,5 +1,69 @@
 # QA report
 
+## Full QA round — 19 Nov 2026
+
+Scope: the whole hub after the restructure — backend, consultant app, client pages, admin, background jobs — on a **real MongoDB 7 replica set** (not only the in-memory fake), plus fuzzing and browser journeys. Every bug below is fixed and has a test that fails if it comes back.
+
+### How it was tested
+
+| Method | Coverage | Result |
+|---|---|---|
+| Backend test suite, in-memory | 128 tests | all pass (≈20 s) |
+| Same suite on real MongoDB 7 (replica set) | 128 tests | all pass (≈2.5 min) |
+| Concurrency tests (same request ×10 at once), real MongoDB | numbering, payments, claims, slots, OTP, slugs, quota, group seats, budget cycles | all pass after fixes |
+| Authorization fuzzer | every action × member / collaborator / manager / another practice's owner × ids they must not see | 0 leaks after fixes |
+| Crash fuzzer | all 225 actions × hostile inputs | 0 crashes after fixes |
+| Route fuzzer | 105 HTTP routes, 2,124 junk requests (anonymous, client, staff) | 0 crashes after fixes |
+| Browser journeys (`scripts/e2e`) | 20 real user journeys, consultant on desktop, clients at 390 px | 20/20 pass |
+| Screen crawl (`scripts/crawl.mjs`) | every screen at 390 px and 1280 px, 125 screenshots | clean |
+| Upgrade check | new index set applied over the original production indexes | 153 → 242 indexes, 0 conflicts, idempotent |
+| Static analysis | ruff (bug classes), ESLint | clean |
+
+### Bugs found and fixed
+
+**Security**
+1. *Unauthenticated webhooks.* `/api/hooks/whatsapp-inbound` matched senders by phone across every practice with no authentication: anyone could post a fake client reply (e.g. "done", which closes that client's tasks) or feed text to the agents. All hooks now need `HOOK_SECRET`; production refuses to boot without it when messaging is live.
+2. *Stored XSS via AI drafts.* Draft HTML rendered raw in the consultant's Approvals screen; a prompt-injected draft ran script in the consultant's session (reproduced in a browser). All seven raw-HTML renders now go through DOMPurify.
+3. *Authorization holes* (members/collaborators reaching projects they aren't on): `files.list`, `payments.list_due`, `approvals.list`, `tasks.list` let a `project_id` filter replace the visibility filter; `agents.runs`/`agents.run_get` had no check; `tasks.complete` and `approvals.skip` let anyone act on any project; `approvals.approve` changed the record before refusing.
+
+**Money and data integrity** (found only on real MongoDB)
+4. Parallel "I've paid" taps created one claim per tap.
+5. First invoice / credit-note numbers of a financial year could fail (500) when sent at the same moment.
+6. Same-name practices created together collided on the web address (originally: silent duplicates).
+7. Budget cycle creation crashed one of two parallel checks; two clients taking the first seats of a group session could be told "full".
+
+**Money shown to clients**
+8. Client pages and the app rounded paise away: ₹12,345.50 showed as ₹12,346.
+9. "Due on receipt" payments showed Overdue the moment they were sent, and the money job fired `payment.overdue` immediately (waking overdue automations and the collections agent). Overdue now means the due day has passed (IST).
+
+**Robustness**
+10. Any malformed date crashed every date-taking action (500); `stages.save` and `/oauth/register` crashed on junk input; `lead_forms.save` crashed on an unknown id.
+11. A failed scheduled file send vanished silently; failed recurring-invoice sends too. The consultant is now notified. Other job failures are logged with stack traces.
+12. `db or get_db()` raised on a real Motor database; the migration lock ignored the database it was migrating.
+
+**Accessibility and copy**
+13. Sheets had no dialog role; inputs labelled only by placeholder had no accessible name (and the first fix briefly overrode visible labels — corrected); package choices and UPI/Bank, Type/Draw toggles didn't announce their selected state; the one-time-code box had no label.
+14. Lead activity read "New lead from manual".
+
+### Journeys covered in the browser
+
+Login by WhatsApp code (and uninvited number, deep link back after login) · new lead · public lead form · request payment → client claims on a phone → consultant confirms → receipt & invoice PDFs · credit note and paid-invoice lock · full client file on a phone (choose package → sign with code → pay → done) · booking from Mumbai and Dubai time zones (saved instant matches the slot picked) · client portal (login, invoices, message reaches the inbox) · log time → invoice it · approve a draft · member / collaborator visibility · onboarding a new account · settings persist · staff admin limit change, log and revert (and consultants refused) · "Ask or tell" chat · hostile HTML in drafts and portal messages never runs.
+
+### Not covered here
+
+- Live vendor adapters (WhatsApp, SMS, email, Google/Microsoft, Zoom, notetaker, S3): still only exercised in fake mode — see `HANDOVER.md`.
+- The Docker image build (the sandbox's build container had no network). CI builds it on every push.
+- Load testing on a production-size database (`LOAD_TEST.md`).
+
+### Suggestions (not bugs)
+
+- When "New lead" matches an existing contact by phone or email, the new project silently takes the existing contact's name. A one-line "Matched existing contact …" note would avoid surprise.
+
+---
+
+## Earlier report
+
+
 Updated 13 Nov 2026 (add-ons). All in QA mode (in-memory database, fake vendors, simulated clock).
 
 ## Automated tests: 94 passed

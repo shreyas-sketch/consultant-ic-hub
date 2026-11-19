@@ -3,8 +3,8 @@ import os
 import re
 
 from conftest import act, client, invite, login
-from core import limits
-from core.db import get_db
+from app.core import limits
+from app.db import get_db
 
 
 async def test_invited_number_logs_in_and_gets_a_workspace():
@@ -38,13 +38,14 @@ async def test_no_cross_workspace_read():
 
 def test_actions_never_touch_tenant_collections_directly():
     """Every tenant read goes through ctx.data (the workspace filter)."""
-    from core.db import TENANT_COLLECTIONS
-    here = os.path.join(os.path.dirname(__file__), "..", "actions")
+    from app.db import TENANT_COLLECTIONS
+    here = os.path.join(os.path.dirname(__file__), "..", "app", "domain")
     bad = []
-    for fn in os.listdir(here):
-        if not fn.endswith(".py"):
-            continue
-        src = open(os.path.join(here, fn)).read()
+    paths = [os.path.join(r, f) for r, _, fs in os.walk(here) for f in fs if f.endswith(".py")]
+    assert len(paths) > 20, "domain modules not found"
+    for path in paths:
+        fn = os.path.basename(path)
+        src = open(path).read()
         for m in re.finditer(r"get_db\(\)\.(\w+)", src):
             if m.group(1) in TENANT_COLLECTIONS:
                 bad.append(f"{fn}: get_db().{m.group(1)}")
@@ -55,7 +56,7 @@ def test_actions_never_touch_tenant_collections_directly():
 
 
 async def test_tenant_helper_refuses_global_and_unknown_collections():
-    from core.tenant import Data
+    from app.db.tenant import Data
     d = Data("ws1")
     for name in ("users", "invites"):
         try:
@@ -121,12 +122,12 @@ async def test_admin_can_add_team_but_refunds_are_owner_admin_only():
     await act(owner, "team.add", {"phone": "9811111121", "name": "Arjun", "role": "admin"})
     adm = await login("+919811111121", invited=False)
     await act(adm, "team.add", {"phone": "9811111122", "name": "Kabir", "role": "member"})
-    from actions.registry import ACTIONS
+    from app.domain.registry import ACTIONS
     assert ACTIONS["payments.refund"].roles <= {"owner", "admin", "system"}
 
 
 async def test_removed_access_is_read_only_and_client_links_keep_working():
-    from core.db import get_db
+    from app.db import get_db
     c = await login("+919811111123")
     await act(c, "workspace.update", {"invoice": {"upi_id": "x@okicici"}})
     pr = await act(c, "projects.create", {"name": "P", "contact": {"name": "Client", "phone": "9800000003", "email": "c@x.in"}})

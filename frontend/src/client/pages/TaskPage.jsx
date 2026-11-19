@@ -1,7 +1,7 @@
 // The client's link for one request: mark it done, upload a file, or reply.
 import { useState } from "react";
 import { useParams } from "react-router";
-import { Fail, Footer, Header, Loading, cget, cpost, toDataUrl, useBrand, useLoad } from "../kit";
+import { Fail, Footer, Header, Loading, cget, cpost, toDataUrl, useBrand, useLoad } from "@/client/lib/kit";
 
 export default function TaskPage() {
   const { token } = useParams();

@@ -1,0 +1,4 @@
+-r requirements.txt
+# QA mode and tests (in-memory database)
+pytest==9.1.1
+pytest-asyncio==1.4.1.post1
