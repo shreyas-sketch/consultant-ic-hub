@@ -56,7 +56,7 @@ Counts: 225 actions, 9 agents, 31 limit keys, 21 consultant screens (plus 13 set
 ## Restructure for production (19 Nov 2026)
 
 - **Layout.** Backend is one package, `backend/app`, in layers (api → auth/domain → agents/automations → integrations/services → db/core); a test enforces the direction. Frontend is feature-based with a shared layer and an `@/` alias. See `docs/ARCHITECTURE.md`.
-- **Deploy.** Railway: web (`railway.json`, pre-deploy migrations, readiness check) and worker (`railway.worker.json`). See `docs/DEPLOY_RAILWAY.md`.
+- **Deploy.** Railway: web (pre-deploy migrations, readiness check), worker, MongoDB (image + volume) and a Storage Bucket. Settings are made on each service; Railway no longer reads `railway.json` for new services. See `docs/DEPLOY_RAILWAY.md`.
 - **Database.** 164 declared indexes (tenant-first compound, token and webhook lookups, TTL for short-lived data), versioned migrations, pooled client, streamed job scans, bounded per-workspace concurrency, renewed job leases.
 - **Fixed on the way:**
   - Jobs only processed the first N matches (`to_list(5000)` and similar); the rest were silently skipped.
