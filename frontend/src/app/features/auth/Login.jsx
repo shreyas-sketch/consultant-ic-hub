@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { get, post } from "@/shared/api";
 import { Wordmark } from "@/app/layout/AppShell";
@@ -63,6 +63,7 @@ export default function Login() {
               {cool > 0 ? `Resend code in ${cool}s` : "Resend code (SMS if WhatsApp fails)"}</button>
           </form>
         )}
+        <Link to="/admin/login" className="mt-8 block text-center text-[13px] text-ivory-35 hover:text-ivory-70">Product team? Sign in with email</Link>
         {qa && (
           <div className="mt-10 border-t border-hairline pt-4">
             <p className="font-mono text-[12px] text-ivory-35">QA MODE · log in as</p>

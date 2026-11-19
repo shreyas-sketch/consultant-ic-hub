@@ -1,4 +1,6 @@
 """Login routes: invite-only WhatsApp OTP (SMS fallback), workspace switch, staff login."""
+from datetime import timedelta
+
 from fastapi import APIRouter, Request, Response
 from pydantic import BaseModel
 
@@ -85,14 +87,30 @@ class StaffLogin(BaseModel):
     password: str
 
 
+STAFF_MAX_FAILURES = 10   # per network and per email, in the lock window
+
+
 @router.post("/staff")
-async def staff_login(body: StaffLogin, response: Response):
+async def staff_login(body: StaffLogin, request: Request, response: Response):
+    """Email + password sign-in for our own team (the Admin screen).
+
+    Wrong passwords are counted per network and per email; after STAFF_MAX_FAILURES
+    in 15 minutes, sign-in is refused until the window passes (brute-force guard)."""
+    from app.db.indexes import STAFF_LOCK_WINDOW_S
+    db = get_db()
+    email = body.email.strip().lower()
+    keys = [f"ip:{client_ip(request)}", f"email:{email}"]
+    since = now() - timedelta(seconds=STAFF_LOCK_WINDOW_S)
+    for k in keys:
+        if await db.login_failures.count_documents({"key": k, "at": {"$gt": since}}) >= STAFF_MAX_FAILURES:
+            raise AppError("rate_limited", "Too many wrong tries. Please wait 15 minutes and try again.", 429)
     ok = (settings.STAFF_EMAIL and settings.STAFF_PASSWORD
-          and secrets_equal(body.email.strip().lower(), settings.STAFF_EMAIL.lower())
+          and secrets_equal(email, settings.STAFF_EMAIL.lower())
           and secrets_equal(body.password, settings.STAFF_PASSWORD))
     if not ok:
+        await db.login_failures.insert_many([{"_id": new_id(), "key": k, "at": now()} for k in keys])
         raise AppError("wrong_login", "That email or password is not right.", 401)
-    db = get_db()
+    await db.login_failures.delete_many({"key": {"$in": keys}})
     user = await db.users.find_one({"phone": "staff"})
     if not user:
         user = {"_id": new_id(), "phone": "staff", "name": "Staff", "staff": True, "is_admin": True, "created_at": now()}

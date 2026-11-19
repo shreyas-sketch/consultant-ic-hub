@@ -4,6 +4,7 @@ import { Navigate, Route, Routes } from "react-router";
 import { RequireAuth } from "@/app/components/RequireAuth";
 import { ErrorBoundary } from "@/app/components/ErrorBoundary";
 import Login from "@/app/features/auth/Login";
+import StaffLogin from "@/app/features/auth/StaffLogin";
 
 const f = {
   Home: lazy(() => import("@/app/features/home/Home")),
@@ -64,6 +65,7 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/admin/login" element={<StaffLogin />} />
       {ROUTES.map(([path, Screen, bare]) => (
         <Route key={path} path={path} element={<RequireAuth bare={bare}><Screen /></RequireAuth>} />
       ))}

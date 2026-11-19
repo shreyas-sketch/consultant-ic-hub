@@ -33,7 +33,7 @@ One repository, one Docker image, four Railway services in one project and envir
    - Railway's own **+ New → Database → MongoDB** template is a fine alternative; it already exposes `MONGO_URL`.
 3. **worker**: **+ New → GitHub repo** → the same repository again. Rename it **worker**. Set its start command (table below).
 4. **Bucket**: **+ New → Bucket**. Railway gives it a generated name (e.g. `sorted-toybox`); you can rename it. **A new bucket is a staged change: click Deploy / Apply changes on the project canvas** (the "New" badge goes away). Until then it doesn't exist in the environment and its variables resolve to nothing.
-5. **Domain**: on web, **Settings → Networking → Generate domain** (port `8000`), or add your own domain.
+5. **Domain**: on web, **Settings → Networking → Generate domain** with target port `8000`, or add your own domain. Railway injects its own `PORT` (often `8080`), so also set `PORT=8000` on web (section 3). If the two differ, the internal healthcheck still passes but the public URL answers 502.
 
 ## 2. Service settings
 
@@ -84,6 +84,7 @@ Per service:
 | Variable | web | worker |
 |---|---|---|
 | `RUN_JOBS` | `false` | `true` |
+| `PORT` | `8000` (must match the domain's target port) | not used |
 | `WEB_CONCURRENCY` | `2` (uvicorn processes per replica) | not used |
 | `ENSURE_INDEXES_ON_START` | `true` | `false` |
 
@@ -101,7 +102,7 @@ Then switch on each outside service as its keys arrive. Set each pair on both we
 | Notetaker | `VENDOR_MEETBOT=live`; `MEETBOT_API_URL`, `MEETBOT_API_KEY` |
 | Errors | `SENTRY_DSN` |
 
-**Logins need WhatsApp or SMS.** Consultants log in with a code sent by WhatsApp (SMS as backup). While both are `fake`, codes are never delivered and only the staff email login (Admin screen) works.
+**Logins need WhatsApp or SMS.** Consultants log in with a code sent by WhatsApp (SMS as backup). While both are `fake`, codes are never delivered and only the staff email sign-in at `/admin/login` (Admin screen) works.
 
 OAuth redirect URIs to register with the providers: `<APP_URL>/api/connect/gmail/callback`, `/api/connect/outlook/callback`, `/api/connect/zoom/callback`.
 
@@ -150,7 +151,7 @@ curl -s https://<your-app>/api/health/ready
 ```
 
 You want `{"ok":true,"db":"up",...}`. Then:
-- log in with `STAFF_EMAIL` / `STAFF_PASSWORD`;
+- sign in at `/admin/login` with `STAFF_EMAIL` / `STAFF_PASSWORD` (also linked from the login page as "Product team? Sign in with email"). After 10 wrong passwords in 15 minutes from one network or for one email, sign-in pauses for 15 minutes;
 - open **Admin → Jobs** (every job should show runs within minutes);
 - upload a logo in **Settings**, redeploy web, and confirm it's still there (proves the bucket).
 
@@ -161,6 +162,7 @@ You want `{"ok":true,"db":"up",...}`. Then:
 | Pre-deploy fails with `Refusing to start with unsafe settings` | a required variable is missing; the log lists which |
 | Pre-deploy fails with `Authentication failed` (code 18) | MongoDB started without its admin user, i.e. its start command bypassed `docker-entrypoint.sh`, or the data folder wasn't empty on first start. Fix the start command as above, change the `--dbpath` folder name, redeploy MongoDB, then web |
 | MongoDB log says "Access control is not enabled" after start-up | the same problem: the database has no password. Fix it before storing anything |
+| Public URL answers 502 "Application failed to respond", but the deploy is green | the domain's target port differs from the port the app listens on. Set `PORT=8000` on web (or change the domain's target port to the port in the log line `Uvicorn running on …`) |
 | Healthcheck times out | `MONGO_URL` wrong, or MongoDB isn't deployed in this environment. `/api/health` (no database) still answers |
 | `S3_*` variables resolve to nothing | the bucket was added but not deployed. Apply the staged change on the canvas |
 | Uploads vanish after a redeploy | `VENDOR_STORAGE` is still `fake` |

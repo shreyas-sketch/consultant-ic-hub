@@ -14,7 +14,7 @@ export default function Admin() {
   const me = useMe();
   const nav = useNavigate();
   if (me.isLoading) return <div className="p-6"><SkeletonList /></div>;
-  if (me.isError) return <Navigate to="/login" replace />;
+  if (me.isError) return <Navigate to="/admin/login" replace />;
   if (!me.data.user.is_admin) return <div className="p-6"><Card>This area is for the product team only.</Card></div>;
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-5 md:px-8">

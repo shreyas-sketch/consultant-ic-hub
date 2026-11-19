@@ -227,3 +227,26 @@ async def test_inbound_webhooks_need_the_shared_secret(monkeypatch):
     assert (await c.post("/api/hooks/meetbot", json={})).status_code == 403
     monkeypatch.setenv("VENDOR_WHATSAPP", "live")
     assert any("HOOK_SECRET" in p for p in settings.problems())
+
+
+async def test_staff_sign_in_works_and_locks_after_repeated_wrong_passwords(monkeypatch):
+    from app.core import settings
+    from app.api.routes.auth import STAFF_MAX_FAILURES
+    monkeypatch.setattr(settings, "STAFF_EMAIL", "team@example.in")
+    monkeypatch.setattr(settings, "STAFF_PASSWORD", "correct horse battery")
+    c = client()
+    ok = await c.post("/api/auth/staff", json={"email": "Team@Example.in", "password": "correct horse battery"})
+    assert ok.status_code == 200
+    assert (await c.get("/api/admin/kpis")).status_code == 200
+    bad = client()
+    for _ in range(STAFF_MAX_FAILURES):
+        assert (await bad.post("/api/auth/staff", json={"email": "team@example.in", "password": "nope"}, headers={"x-real-ip": "7.7.7.7"})).status_code == 401
+    # Locked now: even the right password is refused from that network / for that email.
+    r = await bad.post("/api/auth/staff", json={"email": "team@example.in", "password": "correct horse battery"}, headers={"x-real-ip": "7.7.7.7"})
+    assert r.status_code == 429
+    r = await client().post("/api/auth/staff", json={"email": "team@example.in", "password": "correct horse battery"}, headers={"x-real-ip": "8.8.8.8"})
+    assert r.status_code == 429   # per-email lock too
+    from app.core.util import advance_clock
+    advance_clock(minutes=16)
+    r = await client().post("/api/auth/staff", json={"email": "team@example.in", "password": "correct horse battery"}, headers={"x-real-ip": "8.8.8.8"})
+    assert r.status_code == 200
