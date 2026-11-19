@@ -4,6 +4,7 @@ import { Mail, MessageCircle, Sparkles } from "lucide-react";
 import { act, useAct, useRefresh } from "@/shared/api";
 import { ago, inr, titleCase } from "@/shared/lib/format";
 import { AgentChip, Button, Card, Chip, Empty, Input, Loadable, PageHeader, Segmented, Textarea, toast } from "@/app/ui";
+import { sanitize } from "@/shared/lib/safeHtml";
 
 /** One screen: everything an agent or automation prepared, with Approve / Edit / Skip. */
 export default function Approvals() {
@@ -61,7 +62,7 @@ function Item({ a, onDone }) {
           <>
             <b className="block">{a.preview.subject}</b>
             {a.preview.amount_paise ? <p className="text-gold">{inr(a.preview.amount_paise)}</p> : null}
-            {a.preview.body && <div className="prose-dark mt-1 text-[14px]" dangerouslySetInnerHTML={{ __html: a.preview.body }} />}
+            {a.preview.body && <div className="prose-dark mt-1 text-[14px]" dangerouslySetInnerHTML={{ __html: sanitize(a.preview.body) }} />}
             {a.preview.file_id && <button onClick={() => nav(`/files/${a.preview.file_id}`)} className="mt-1 text-[14px] font-bold text-gold">Open the client file</button>}
           </>
         )}

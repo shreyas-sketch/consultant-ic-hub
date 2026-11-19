@@ -9,6 +9,7 @@ import { dt, inr, titleCase } from "@/shared/lib/format";
 import { useWs } from "@/app/layout/AppShell";
 import RichText from "@/app/ui/RichText";
 import { Button, Card, Chip, Field, Input, Kicker, MoneyInput, Segmented, Select, Sheet, SkeletonList, Toggle, cx, toast, useAutosave } from "@/app/ui";
+import { sanitize } from "@/shared/lib/safeHtml";
 
 const nid = () => Math.random().toString(36).slice(2, 12);
 const BLOCKS = [
@@ -164,7 +165,7 @@ const AddBetween = ({ onClick }) => (
 function BlockPreview({ b, ws, invoice, pages }) {
   const pr = ws?.profile || {};
   const gold = ws?.theme?.primary || "#C9A84C";
-  const html = (h) => <div className="prose-light text-[15px] leading-relaxed [&_h1]:text-[26px] [&_h1]:font-extrabold [&_h2]:text-[20px] [&_h2]:font-extrabold [&_p]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5" dangerouslySetInnerHTML={{ __html: h || "<p style='color:#9a968c'>Empty text</p>" }} />;
+  const html = (h) => <div className="prose-light text-[15px] leading-relaxed [&_h1]:text-[26px] [&_h1]:font-extrabold [&_h2]:text-[20px] [&_h2]:font-extrabold [&_p]:my-1.5 [&_ul]:list-disc [&_ul]:pl-5" dangerouslySetInnerHTML={{ __html: sanitize(h) || "<p class='text-[#9a968c]'>Empty text</p>" }} />;
   switch (b.type) {
     case "text": case "thankyou": return html(b.html);
     case "image": return b.url || b.key ? <img alt="" src={b.url || `/api/uploads/${b.upload_id}`} className="max-h-72 w-full rounded-lg object-cover" style={{ objectPosition: `${b.focal?.x ?? 50}% ${b.focal?.y ?? 50}%` }} /> : <div className="grid h-32 place-items-center rounded-lg bg-[#EFEBE2] text-[#8a8579]">Image</div>;

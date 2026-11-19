@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useParams } from "react-router";
 import { Fail, Footer, Header, Loading, SlotPicker, cget, cpost, fmtDate, fmtDay, fmtTime, inr, myTz, toDataUrl, slugOf, useBrand, useLoad } from "@/client/lib/kit";
+import { sanitize } from "@/shared/lib/safeHtml";
 
 /** One portal per client, with all their projects. */
 export default function Portal() {
@@ -86,7 +87,7 @@ function Project({ slug, pid, back }) {
             {x.status === "booked" && new Date(x.start) > new Date() && (moving === x.id ? <div className="mt-3"><SlotPicker onPick={async (st) => { try { await cpost(`/api/public/${slug}/portal/session/${x.id}/reschedule`, { start: st }); setMoving(null); s.reload(); } catch (e) { alert(e.message); } }}
               loadSlots={(a, b) => cget(`/api/public/${slug}/book/${x.type_id}/slots?date_from=${encodeURIComponent(a)}&date_to=${encodeURIComponent(b)}`)} /></div>
               : <button className="c-btn2 mt-2" onClick={() => setMoving(x.id)}>Reschedule</button>)}</div>))}
-        {tab === "messages" && <>{p.messages.map((m, i) => <div key={i} className={`c-card max-w-[88%] p-3 text-[14px] ${m.direction === "in" ? "ml-auto" : ""}`}>{m.subject && <b className="block">{m.subject}</b>}{m.html ? <div className="c-prose" dangerouslySetInnerHTML={{ __html: m.html }} /> : m.text}<div className="text-[12px] c-muted">{fmtDate(m.at, tz)}</div></div>)}
+        {tab === "messages" && <>{p.messages.map((m, i) => <div key={i} className={`c-card max-w-[88%] p-3 text-[14px] ${m.direction === "in" ? "ml-auto" : ""}`}>{m.subject && <b className="block">{m.subject}</b>}{m.html ? <div className="c-prose" dangerouslySetInnerHTML={{ __html: sanitize(m.html) }} /> : m.text}<div className="text-[12px] c-muted">{fmtDate(m.at, tz)}</div></div>)}
           <div className="flex gap-2"><input className="c-in" placeholder="Write a message" value={msg} onChange={(e) => setMsg(e.target.value)} /><button className="c-btn2" onClick={async () => { if (!msg.trim()) return; await cpost(`/api/public/${slug}/portal/project/${pid}/message`, { text: msg }); setMsg(""); s.reload(); }}>Send</button></div></>}
         {tab === "details" && <>{Object.entries(p.details || {}).map(([k, v]) => <div key={k} className="flex justify-between text-[14px]"><span className="c-muted">{k}</span><b>{String(v)}</b></div>)}
           {p.notes.map((n, i) => <div key={i} className="c-card whitespace-pre-wrap p-4 text-[14px]">{n.text}</div>)}{!p.notes.length && !Object.keys(p.details || {}).length && <p className="c-muted">Nothing shared yet.</p>}</>}

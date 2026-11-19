@@ -133,6 +133,11 @@ S3_ADDRESSING_STYLE = os.getenv("S3_ADDRESSING_STYLE", "virtual")   # "path" for
 UPLOAD_DIR = os.getenv("UPLOAD_DIR", "/tmp/practice-os-uploads")
 SENTRY_DSN = os.getenv("SENTRY_DSN", "")
 
+# Shared secret for inbound webhooks (/api/hooks/*). Give providers the URL with
+# ?secret=<HOOK_SECRET>, or send it in an X-Hook-Secret header. Required in production
+# whenever WhatsApp, email or the notetaker is live.
+HOOK_SECRET = os.getenv("HOOK_SECRET", "")
+
 OTP_PER_IP_PER_HOUR = _i("OTP_PER_IP_PER_HOUR", 30 if not QA_MODE else 1000)
 
 # Tests only: Client ID Metadata Documents served without the network (QA mode, *.test hosts).
@@ -162,6 +167,8 @@ def problems() -> list:
         out.append("VENDOR_STORAGE=live needs S3_BUCKET (and S3_ENDPOINT_URL for non-AWS buckets).")
     if vendor_mode("ai") == "live" and not ANTHROPIC_API_KEY:
         out.append("VENDOR_AI=live needs ANTHROPIC_API_KEY.")
+    if not HOOK_SECRET and any(vendor_mode(v) == "live" for v in ("whatsapp", "email", "gmail", "outlook", "meetbot")):
+        out.append("HOOK_SECRET must be set when WhatsApp, email or the notetaker is live (it protects /api/hooks/*).")
     for v in VENDORS:
         if vendor_mode(v) not in ("live", "fake", "off"):
             out.append(f"VENDOR_{v.upper()} must be live, fake or off.")

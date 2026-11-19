@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 import { Fail, Footer, Header, Loading, Sheet, SlotPicker, cget, cpost, fmtDate, inr, myTz, toDataUrl, useBrand, useLoad } from "@/client/lib/kit";
 import { Question } from "@/client/pages/Public";
+import { sanitize } from "@/shared/lib/safeHtml";
 
 /** Review -> choose -> sign -> pay -> book, one page at a time, one big button at the bottom. */
 export function FileViewer({ preview }) {
@@ -72,7 +73,7 @@ export function FileViewer({ preview }) {
 function Block({ b, base, preview, version, client, onChange }) {
   const run = async (path, body) => { if (preview) return; await cpost(`${base}/${path}`, body); await onChange(); };
   switch (b.type) {
-    case "text": case "thankyou": return <div className="c-prose" dangerouslySetInnerHTML={{ __html: b.html }} />;
+    case "text": case "thankyou": return <div className="c-prose" dangerouslySetInnerHTML={{ __html: sanitize(b.html) }} />;
     case "image": return b.url ? <img src={b.url} alt="" className="max-h-[420px] w-full object-cover" style={{ borderRadius: "var(--c-radius)", objectPosition: `${b.focal?.x ?? 50}% ${b.focal?.y ?? 50}%` }} /> : null;
     case "video": return b.url ? <Video url={b.url} /> : null;
     case "divider": return <hr className="border-[#e6e1d6]" />;
@@ -128,7 +129,7 @@ function Services({ b, run }) {
       {b.items.map((it) => {
         const on = !!sel[it.id];
         return (
-          <button key={it.id} onClick={() => toggle(it)} disabled={busy} className="c-card flex gap-3 p-4 text-left transition" style={on ? { borderColor: "var(--c-primary)", boxShadow: "0 0 0 2px var(--c-primary)" } : {}}>
+          <button key={it.id} aria-pressed={!!on} onClick={() => toggle(it)} disabled={busy} className="c-card flex gap-3 p-4 text-left transition" style={on ? { borderColor: "var(--c-primary)", boxShadow: "0 0 0 2px var(--c-primary)" } : {}}>
             <span className="mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-full border-2" style={{ borderColor: on ? "var(--c-primary)" : "#cfc8b9", background: on ? "var(--c-primary)" : "transparent" }}>{on && <span className="h-2 w-2 rounded-full bg-white" />}</span>
             <span className="min-w-0 flex-1"><span className="block font-bold">{it.name}{it.kind === "addon" && <span className="ml-2 text-[12px] font-bold c-muted">Add-on</span>}</span>
               {it.desc && <span className="mt-0.5 block text-[14px] c-muted">{it.desc}</span>}</span>
@@ -145,7 +146,7 @@ function Contract({ b, base, preview, client, onChange }) {
   const me = b.signers.find((s) => s.id === b.my_signer_id);
   return (
     <div className="space-y-3">
-      <div className="c-card c-prose max-h-[60vh] overflow-y-auto p-5" dangerouslySetInnerHTML={{ __html: b.html }} />
+      <div className="c-card c-prose max-h-[60vh] overflow-y-auto p-5" dangerouslySetInnerHTML={{ __html: sanitize(b.html) }} />
       <div className="grid gap-2 md:grid-cols-2">{b.signers.map((s) => (
         <div key={s.id} className="c-card p-3"><div className="text-[12px] font-bold uppercase tracking-[.14em] c-muted">{s.role === "client" ? "You" : s.role === "consultant" ? "Consultant" : "Signer"}</div>
           {s.signed ? <><div className="text-[20px] italic" style={{ fontFamily: "Georgia, serif" }}>{s.name}</div><div className="text-[12px] c-muted">Signed {s.at}</div></> : <div className="text-[14px] c-muted">Not signed yet</div>}</div>))}</div>
@@ -178,13 +179,13 @@ function SignSheet({ open, onClose, b, base, client, onDone }) {
     <Sheet open={open} onClose={onClose} title="Sign the agreement">
       <div className="space-y-3">
         {b.fields.map((f) => <label key={f.key} className="block"><span className="mb-1 block text-[14px] font-bold">{f.label}{f.permission === "client_must_fill" ? " *" : ""}</span><input className="c-in" value={fields[f.key] ?? f.value ?? ""} onChange={(e) => setFields({ ...fields, [f.key]: e.target.value })} /></label>)}
-        <input className="c-in" placeholder="Your full name" value={name} onChange={(e) => setName(e.target.value)} />
-        <div className="flex gap-2">{[["typed", "Type"], ["drawn", "Draw"]].map(([k, l]) => <button key={k} onClick={() => setMethod(k)} className="c-btn2 flex-1" style={method === k ? { borderColor: "var(--c-primary)" } : {}}>{l}</button>)}</div>
+        <input className="c-in" aria-label="Your full name" placeholder="Your full name" value={name} onChange={(e) => setName(e.target.value)} />
+        <div className="flex gap-2">{[["typed", "Type"], ["drawn", "Draw"]].map(([k, l]) => <button key={k} aria-pressed={method === k} onClick={() => setMethod(k)} className="c-btn2 flex-1" style={method === k ? { borderColor: "var(--c-primary)" } : {}}>{l}</button>)}</div>
         {method === "typed" ? <div className="c-card p-4 text-center text-[28px] italic" style={{ fontFamily: "Georgia, serif" }}>{name || "Your name"}</div>
           : <canvas ref={canvas} width={340} height={140} className="c-card w-full touch-none" onMouseDown={down} onMouseMove={move} onMouseUp={() => (drawing.current = false)} onTouchStart={down} onTouchMove={move} onTouchEnd={() => (drawing.current = false)} />}
         {!sent ? <button className="c-btn w-full" disabled={!name.trim()} onClick={send}>Send me a code to confirm</button> : <>
           <p className="text-[14px] c-muted">Enter the code we sent you on {sent.channel === "email" ? "email" : "WhatsApp"}.{sent.qa_code ? ` (Test code: ${sent.qa_code})` : ""}</p>
-          <input className="c-in text-center text-[22px] tracking-[.4em]" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
+          <input className="c-in text-center text-[22px] tracking-[.4em]" aria-label="6-digit code" autoComplete="one-time-code" inputMode="numeric" maxLength={6} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} />
           <button className="c-btn w-full" disabled={busy || code.length !== 6} onClick={sign}>{busy ? "Signing…" : "Sign"}</button></>}
         {err && <p className="font-bold text-[#B33A2A]">{err.message}</p>}
         <p className="text-[12px] c-muted">We record your name, a verified code, the time and a fingerprint of this exact text. You'll get a signed copy by email.</p>
@@ -243,7 +244,7 @@ export function Pay({ inv, claimUrl, planUrl, promoUrl, version, onChange }) {
       {due && due.state !== "processing" && <>
         {inv.client_choice?.allowed && planUrl && <div className="flex gap-2"><button className="c-btn2 flex-1" onClick={async () => { await cpost(planUrl, { invoice_id: inv.id, plan: "full" }); onChange(); }}>Pay in full</button>
           <button className="c-btn2 flex-1" onClick={async () => { await cpost(planUrl, { invoice_id: inv.id, plan: "split", months: inv.client_choice.months || 3 }); onChange(); }}>Split into {inv.client_choice.months || 3} monthly</button></div>}
-        <div className="flex gap-2">{[["upi", "UPI"], ["bank", "Bank transfer"]].map(([k, l]) => <button key={k} onClick={() => setMethod(k)} className="c-btn2 flex-1" style={method === k ? { borderColor: "var(--c-primary)", background: "#fff" } : {}}>{l}</button>)}</div>
+        <div className="flex gap-2">{[["upi", "UPI"], ["bank", "Bank transfer"]].map(([k, l]) => <button key={k} aria-pressed={method === k} onClick={() => setMethod(k)} className="c-btn2 flex-1" style={method === k ? { borderColor: "var(--c-primary)", background: "#fff" } : {}}>{l}</button>)}</div>
         {method === "upi" && (due.upi_link ? <div className="c-card p-4 text-center">
           {phone ? <a href={due.upi_link} className="c-btn flex w-full items-center justify-center">Pay {inr(amount)} by UPI</a> : <><img src={due.upi_qr} alt="UPI QR code" className="mx-auto h-48 w-48" /><p className="mt-2 text-[14px] c-muted">Scan with any UPI app</p></>}
           <p className="mt-2 text-[13px] c-muted">To {inv.pay_to.payee} · {inv.pay_to.upi_id}</p></div> : <p className="c-muted">UPI isn't set up for this invoice. Please use bank transfer.</p>)}

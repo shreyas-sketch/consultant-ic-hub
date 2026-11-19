@@ -4,6 +4,7 @@ import { ArrowLeft, Mail, MessageCircle, Sparkles } from "lucide-react";
 import { act, useAct, useRefresh } from "@/shared/api";
 import { ago, dt, titleCase } from "@/shared/lib/format";
 import { AgentChip, Button, Card, Chip, Empty, Loadable, PageHeader, Segmented, Textarea, cx, toast } from "@/app/ui";
+import { sanitize } from "@/shared/lib/safeHtml";
 
 export default function Inbox() {
   const { projectId } = useParams();
@@ -71,7 +72,7 @@ function Thread({ pid }) {
                   · {dt(m.created_at)}{m.direction === "out" && <span className={m.status === "failed" || m.status === "bounced" ? "text-alert" : ""}>· {m.status}</span>}
                 </div>
                 {m.subject && <b className="block">{m.subject}</b>}
-                {m.body_html ? <div className="prose-dark text-[14px]" dangerouslySetInnerHTML={{ __html: m.body_html }} /> : <p className="whitespace-pre-wrap text-[14px]">{m.body_text || (m.wa_template ? `Template: ${m.wa_template}` : "")}</p>}
+                {m.body_html ? <div className="prose-dark text-[14px]" dangerouslySetInnerHTML={{ __html: sanitize(m.body_html) }} /> : <p className="whitespace-pre-wrap text-[14px]">{m.body_text || (m.wa_template ? `Template: ${m.wa_template}` : "")}</p>}
               </div>
             ))}
           </div>

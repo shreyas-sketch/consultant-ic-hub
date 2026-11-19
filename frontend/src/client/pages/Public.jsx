@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router";
 import { Fail, Footer, Header, Loading, SlotPicker, cget, cpost, fmtDay, fmtTime, inr, myTz, slugOf, useBrand, useLoad } from "@/client/lib/kit";
+import { sanitize } from "@/shared/lib/safeHtml";
 
 export function FormPage() {
   const params = useParams(); const slug = slugOf(params); const { form } = params;
@@ -38,7 +39,7 @@ export function FormPage() {
   }
   if (done) return (
     <div className={embed ? "" : "min-h-screen"}>{!embed && <Header brand={s.data.brand} />}
-      <main className="mx-auto max-w-2xl px-5 py-10 rise"><div className="c-prose" dangerouslySetInnerHTML={{ __html: done.thank_you?.html || "<h2>Thank you!</h2>" }} />
+      <main className="mx-auto max-w-2xl px-5 py-10 rise"><div className="c-prose" dangerouslySetInnerHTML={{ __html: sanitize(done.thank_you?.html) || "<h2>Thank you!</h2>" }} />
         {done.session && <p className="mt-3 font-bold">Your call is booked for {fmtDay(done.session.start, myTz())}, {fmtTime(done.session.start, myTz())}.</p>}</main></div>
   );
   return (

@@ -210,3 +210,20 @@ async def test_run_job_runs_on_its_very_first_call():
     from app.workers.jobs import run_job
     r = await run_job("housekeeping")
     assert r["ok"] is True, r
+
+
+async def test_inbound_webhooks_need_the_shared_secret(monkeypatch):
+    from app.core import settings
+    monkeypatch.setattr(settings, "HOOK_SECRET", "s3cret-hook")
+    c = client()
+    body = {"from": "+919800000000", "text": "done"}
+    assert (await c.post("/api/hooks/whatsapp-inbound", json=body)).status_code == 401
+    assert (await c.post("/api/hooks/whatsapp-inbound?secret=wrong", json=body)).status_code == 401
+    assert (await c.post("/api/hooks/whatsapp-inbound?secret=s3cret-hook", json=body)).status_code == 200
+    assert (await c.post("/api/hooks/email-events", json={}, headers={"x-hook-secret": "s3cret-hook"})).status_code == 200
+    # Production without a secret refuses outright, and won't boot with live messaging.
+    monkeypatch.setattr(settings, "HOOK_SECRET", "")
+    monkeypatch.setattr(settings, "QA_MODE", False)
+    assert (await c.post("/api/hooks/meetbot", json={})).status_code == 403
+    monkeypatch.setenv("VENDOR_WHATSAPP", "live")
+    assert any("HOOK_SECRET" in p for p in settings.problems())

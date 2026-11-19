@@ -12,7 +12,7 @@ import random
 import re
 from datetime import timedelta
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import Response as RawResponse
 
 from app.integrations import vendors
@@ -32,8 +32,21 @@ from app.db import get_db
 from app.core.events import emit, log, notify
 from app.core.util import AppError, aware, clean, fmt_dt, inr, new_id, not_found, now, token
 
+async def verify_hook(request: Request):
+    """Inbound webhooks must carry the shared secret (query ?secret= or X-Hook-Secret header).
+    Without it anyone could post fake client replies, e.g. 'done' to close a client's tasks."""
+    from app.core.security import secrets_equal
+    if not settings.HOOK_SECRET:
+        if settings.QA_MODE:
+            return
+        raise AppError("forbidden", "Webhooks are not configured.", 403)
+    got = request.headers.get("x-hook-secret") or request.query_params.get("secret") or ""
+    if not secrets_equal(got, settings.HOOK_SECRET):
+        raise AppError("forbidden", "Not allowed.", 401)
+
+
 router = APIRouter(prefix="/api/public")
-hooks = APIRouter(prefix="/api/hooks")
+hooks = APIRouter(prefix="/api/hooks", dependencies=[Depends(verify_hook)])
 
 
 def cctx(ws_id):
