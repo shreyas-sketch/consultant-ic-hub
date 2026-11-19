@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertCircle, Check, ChevronDown, Loader2, Sparkles, X } from "lucide-react";
 import { inr, rupeesToPaise } from "@/shared/lib/format";
@@ -109,20 +109,25 @@ export const AgentChip = ({ who = "agent" }) => (
 );
 
 // ---------- inputs ----------
+// Inputs inside a labelled Field are named by that label; only unlabelled inputs fall back to the placeholder.
+const Labelled = createContext(false);
+
 export function Field({ label, hint, error, children, className = "" }) {
   return (
+    <Labelled.Provider value={!!label}>
     <label className={cx("block", className)}>
       {label && <span className="mb-1 block text-[13px] font-bold text-ivory-70">{label}</span>}
       {children}
       {hint && !error && <span className="mt-1 block text-[12px] text-ivory-35">{hint}</span>}
       {error && <span className="mt-1 block text-[13px] text-alert">{error}</span>}
     </label>
+    </Labelled.Provider>
   );
 }
 const inputCls = "w-full rounded-input border border-hairline bg-panel px-3.5 py-3 text-ivory placeholder:text-ivory-35 focus:border-gold focus:outline-none";
-// Inputs without a visible label take their placeholder as the accessible name (screen readers).
-export const Input = ({ className = "", ai, ...p }) => <input aria-label={p["aria-label"] ?? p.placeholder} className={cx(inputCls, ai && "focus:border-teal", className)} {...p} />;
-export const Textarea = ({ className = "", ai, ...p }) => <textarea aria-label={p["aria-label"] ?? p.placeholder} className={cx(inputCls, "min-h-[96px]", ai && "font-mono text-[14px] focus:border-teal", className)} {...p} />;
+const useA11yName = (p) => (useContext(Labelled) ? p["aria-label"] : p["aria-label"] ?? p.placeholder);
+export const Input = ({ className = "", ai, ...p }) => <input aria-label={useA11yName(p)} className={cx(inputCls, ai && "focus:border-teal", className)} {...p} />;
+export const Textarea = ({ className = "", ai, ...p }) => <textarea aria-label={useA11yName(p)} className={cx(inputCls, "min-h-[96px]", ai && "font-mono text-[14px] focus:border-teal", className)} {...p} />;
 export function Select({ options, className = "", ...p }) {
   return (
     <select className={cx(inputCls, "appearance-none pr-9", className)} {...p}>
