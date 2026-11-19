@@ -17,4 +17,4 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 import uvicorn  # noqa: E402
 
 if __name__ == "__main__":
-    uvicorn.run("server:app", host="0.0.0.0", port=int(os.getenv("PORT", "8765")), log_level="warning")
+    uvicorn.run("app.main:app", host="0.0.0.0", port=int(os.getenv("PORT", "8765")), log_level="warning")

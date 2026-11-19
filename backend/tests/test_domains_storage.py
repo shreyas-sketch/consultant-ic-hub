@@ -1,7 +1,7 @@
 import base64
 
 from conftest import act, client, login
-from core.db import get_db
+from app.db import get_db
 
 
 def data_url(n_bytes):
@@ -33,7 +33,7 @@ async def test_custom_domain_serves_client_pages():
     assert (await anon.get("/api/public/domain-check", params={"domain": "book.mehtaadvisory.in"})).status_code == 200
     assert (await anon.get("/api/public/domain-check", params={"domain": "evil.example.com"})).status_code == 404
     # Links in emails now use the practice's own domain.
-    from actions.merge import client_base
+    from app.domain.documents.merge import client_base
     w = await get_db().workspaces.find_one({"_id": ws["id"]})
     assert client_base(w) == "https://book.mehtaadvisory.in"
     # Removing it puts links back on our domain.
@@ -75,8 +75,8 @@ async def test_reopen_lets_client_change_answers_then_completes_again():
 async def test_practice_subdomain_serves_client_pages_but_app_host_does_not(monkeypatch):
     import os
     import pytest
-    import server
-    from core import settings
+    from app import main as server
+    from app.core import settings
     if not os.path.isfile(os.path.join(server.FRONTEND, "client.html")):
         pytest.skip("screens not built")
     owner = await login("+919811112004")

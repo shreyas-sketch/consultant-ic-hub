@@ -21,14 +21,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."
 
 import httpx  # noqa: E402
 
-import server  # noqa: E402
-from core.context import Ctx, system_ctx  # noqa: E402
-from core.db import ensure_indexes, get_db  # noqa: E402
-from core.util import new_id, now  # noqa: E402
+from app import main as server  # noqa: E402
+from app.core.context import Ctx, system_ctx  # noqa: E402
+from app.db import ensure_indexes, get_db  # noqa: E402
+from app.core.util import new_id, now  # noqa: E402
 
 
 async def owner(i):
-    from auth import login_phone
+    from app.api.routes.auth import login_phone
     phone = f"+9197{i:08d}"
     await get_db().invites.insert_one({"_id": new_id(), "phone": phone, "status": "invited", "created_at": now(), "via": "admin"})
     u = await login_phone(phone)
@@ -38,8 +38,8 @@ async def owner(i):
 
 
 async def scenario_files():
-    from actions.files import SendIn, create_file, do_send
-    from actions.crm import create_lead
+    from app.domain.documents.files import SendIn, create_file, do_send
+    from app.domain.sales.crm import create_lead
     ctx = await owner(1)
     tpl = await ctx.data.templates.find_one({"gallery_key": "onboarding"})
     tokens = []
@@ -57,7 +57,7 @@ async def scenario_files():
 
 
 async def scenario_runs():
-    from automations.engine import start_run, tick
+    from app.automations.engine import start_run, tick
     ctx = await owner(2)
     a = await ctx.data.automations.insert({"name": "Load", "trigger": {"type": "manual"}, "active": True,
                                            "steps": [{"id": "s1", "type": "action", "action": "create_task", "title": "Load task"}]})
@@ -77,7 +77,7 @@ async def scenario_runs():
 
 
 async def scenario_brief():
-    from jobs import j_daily_brief
+    from app.workers.jobs import j_daily_brief
     for i in range(300):
         await owner(100 + i)
     t0 = time.time()

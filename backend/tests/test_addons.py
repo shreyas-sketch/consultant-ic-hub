@@ -9,8 +9,8 @@ from datetime import date, timedelta
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from conftest import act, client, login, outbox, ready_practice, run_jobs
-from core.db import get_db
-from core.util import IST, advance_clock, now
+from app.db import get_db
+from app.core.util import IST, advance_clock, now
 
 HOUR = 600000   # ₹6,000 an hour, in paise
 
@@ -229,7 +229,7 @@ async def test_period_lock_and_members_only_touch_their_own_time():
 
 
 async def test_bulk_download_remind_and_export_invoices():
-    from jobs import j_exports
+    from app.workers.jobs import j_exports
     c, ws = await practice()
     pr = await project(c)
     for amt in (5000000, 7500000):
@@ -332,7 +332,7 @@ async def retainer(c, pid, **kw):
 
 
 async def close_due(ws_id):
-    from actions.retainers import run_all
+    from app.domain.billing.retainers import run_all
     return await run_all(ws_id)
 
 
@@ -389,8 +389,8 @@ async def test_retainer_borrow_rule_next_period_starts_with_14():
 
 
 async def test_retainer_period_closes_exactly_once_with_two_workers():
-    from actions.retainers import close_period
-    from core.context import system_ctx
+    from app.domain.billing.retainers import close_period
+    from app.core.context import system_ctx
     c, ws = await practice()
     pr = await project(c)
     r = await retainer(c, pr["id"])
@@ -454,8 +454,8 @@ async def test_retainer_ask_first_overage_and_client_statement():
 # ======================= A5 estimates =======================
 
 async def test_quote_never_shows_cost_and_accepting_twice_converts_once():
-    from public import quote_html
-    from core.context import system_ctx
+    from app.api.routes.public import quote_html
+    from app.core.context import system_ctx
     c, ws = await practice()
     me = json.loads(await (await c.get("/api/auth/me")).aread())["user"]["id"]
     await act(c, "team.set_rates", {"user_id": me, "cost_rate_paise": 200000})
@@ -566,8 +566,8 @@ async def test_fixed_fee_effective_rate_uses_the_fee_received():
 # ======================= A7 client tasks =======================
 
 async def test_client_completes_a_task_from_whatsapp_and_by_link():
-    from actions.inbox import receive
-    from core.context import system_ctx
+    from app.domain.engagement.inbox import receive
+    from app.core.context import system_ctx
     c, ws = await practice()
     pr = await project(c)
     t = await act(c, "client_tasks.assign", {"project_id": pr["id"], "title": "Share last year's P&L",
@@ -594,7 +594,7 @@ async def test_client_completes_a_task_from_whatsapp_and_by_link():
 
 
 async def test_overdue_client_task_gets_a_drafted_nudge():
-    from actions.client_tasks import run_due
+    from app.domain.engagement.client_tasks import run_due
     c, ws = await practice()
     pr = await project(c)
     await act(c, "client_tasks.assign", {"project_id": pr["id"], "title": "Share bank statements", "due_at": (now() + timedelta(hours=1)).isoformat(),
@@ -618,7 +618,7 @@ async def test_meeting_notes_turn_client_promises_into_client_tasks():
 # ======================= task templates and recurring tasks =======================
 
 async def test_stage_checklist_once_and_recurring_task_never_twice():
-    from actions.retainers import recurring_tasks
+    from app.domain.billing.retainers import recurring_tasks
     c, ws = await practice()
     pr = await project(c)
     tpl = await act(c, "task_templates.create", {"name": "Kickoff", "items": [{"title": "Send welcome pack", "estimate_hours": 1, "due_days": 2},
@@ -650,7 +650,7 @@ def pkce():
 
 
 async def oauth_login(user_client, ws_id, scope="full", client_id=CIMD, redirect=REDIRECT):
-    from core import settings
+    from app.core import settings
     settings.QA_CIMD[CIMD] = {"client_id": CIMD, "client_name": "Claude", "redirect_uris": [REDIRECT]}
     v, ch = pkce()
     q = {"response_type": "code", "client_id": client_id, "redirect_uri": redirect, "code_challenge": ch, "code_challenge_method": "S256",

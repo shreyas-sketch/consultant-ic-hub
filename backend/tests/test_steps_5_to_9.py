@@ -3,8 +3,8 @@ import asyncio
 from datetime import timedelta
 
 from conftest import act, client, login, outbox, ready_practice, run_jobs
-from core.db import get_db
-from core.util import IST, advance_clock, aware, now
+from app.db import get_db
+from app.core.util import IST, advance_clock, aware, now
 
 
 async def owner(phone="+919833300001"):
@@ -97,11 +97,11 @@ async def test_slot_hold_for_sign_to_reserve_then_confirmed_on_signature():
 
 
 async def test_held_slot_is_released_after_ten_minutes():
-    from jobs import j_sessions
+    from app.workers.jobs import j_sessions
     c, ws = await owner()
     st = await discovery(c)
-    from actions.scheduling import book, find_slots
-    from core.context import system_ctx
+    from app.domain.engagement.scheduling import book, find_slots
+    from app.core.context import system_ctx
     ctx = system_ctx(ws["id"])
     contact = await ctx.data.contacts.insert({"name": "T", "email": "t@x.in"})
     s0 = await ctx.data.session_types.get(st["id"])
@@ -139,8 +139,8 @@ async def test_quiet_hours_hold_agent_messages_until_8am():
     pr = await act(c, "projects.create", {"name": "Q", "contact": {"name": "Q", "email": "q@x.in"}})
     t = now().astimezone(IST)
     advance_clock(seconds=(t.replace(hour=22, minute=30) - t).total_seconds())
-    from actions.inbox import send_message
-    from core.context import system_ctx
+    from app.domain.engagement.inbox import send_message
+    from app.core.context import system_ctx
     ctx = system_ctx(ws["id"], actor="agent:followup")
     contact = await ctx.data.contacts.find_one({})
     m = await send_message(ctx, pr["id"], contact, "email", "Nudge", "<p>Hi</p>")
@@ -219,7 +219,7 @@ async def test_onboarding_and_collections_starters():
     p = await act(c, "projects.get", {"id": pr["id"]})
     assert p["stage"]["key"] == "in_delivery"  # onboarding automation moved it after the advance
     assert any("kickoff" in t["title"].lower() for t in p["tasks"])
-    from jobs import j_money
+    from app.workers.jobs import j_money
     advance_clock(days=3)
     await j_money()
     await run_jobs()
@@ -230,8 +230,8 @@ async def test_onboarding_and_collections_starters():
 async def test_editing_an_automation_does_not_change_runs_in_flight():
     c, ws = await owner()
     a = next(x for x in await act(c, "automations.list") if x["key"] == "proposal_not_viewed")
-    from automations.engine import start_run
-    from core.context import system_ctx
+    from app.automations.engine import start_run
+    from app.core.context import system_ctx
     ctx = system_ctx(ws["id"])
     runs = []
     for i in range(50):
@@ -250,8 +250,8 @@ async def test_worker_killed_mid_step_never_double_sends():
     tpl = next(t for t in await act(c, "templates.list", {"kind": "email"}) if t["name"] == "Welcome after advance")
     auto = await act(c, "automations.save", {"name": "Send now", "trigger": {"type": "manual"}, "active": True,
                                              "steps": [{"type": "action", "action": "send_email", "template_id": tpl["id"]}]})
-    from automations.engine import execute, start_run
-    from core.context import system_ctx
+    from app.automations.engine import execute, start_run
+    from app.core.context import system_ctx
     ctx = system_ctx(ws["id"])
     run = await start_run(ctx, await ctx.data.automations.get(auto["id"]), pr["id"])
     await execute(dict(run))
@@ -328,7 +328,7 @@ async def test_draft_mode_nothing_leaves_without_an_approval_record():
 
 
 async def test_autonomy_auto_sends_external_but_money_stays_locked():
-    from agents.runtime import gate
+    from app.agents.runtime import gate
     assert gate("external", "auto", "worker") == "run"
     assert gate("money", "auto", "worker") == "approve"
     assert gate("destructive", "auto", "worker") == "refuse"
@@ -343,7 +343,7 @@ async def test_autonomy_auto_sends_external_but_money_stays_locked():
 async def test_meeting_agent_turns_a_transcript_into_notes_and_tasks_and_proposal_agent_drafts():
     c, ws = await owner()
     pr = await act(c, "projects.create", {"name": "Call", "contact": {"name": "Anita", "email": "a@x.in"}})
-    from vendors import FAKE_TRANSCRIPT
+    from app.integrations.vendors import FAKE_TRANSCRIPT
     r = await act(c, "meetings.add_transcript", {"project_id": pr["id"], "text": FAKE_TRANSCRIPT})
     p = await act(c, "projects.get", {"id": pr["id"]})
     assert any(n["text"].startswith("Call summary") for n in p["notes"])
@@ -366,7 +366,7 @@ async def test_screenshot_to_lead():
 
 async def test_setup_agent_builds_a_usable_account_from_the_interview():
     c = await login("+919833300099", "New Consultant")
-    from seed import SETUP
+    from app.db.seed import SETUP
     q = await act(c, "onboarding.questions")
     assert 8 <= len(q["questions"]) <= 10
     out = await act(c, "onboarding.finish", {"answers": SETUP})
@@ -442,7 +442,7 @@ async def test_reports_and_money_view():
 
 
 async def test_recurring_invoice_goes_out_once_a_month():
-    from jobs import j_recurring
+    from app.workers.jobs import j_recurring
     c, ws = await owner()
     pr = await act(c, "projects.create", {"name": "Ret", "contact": {"name": "Neel", "email": "n@x.in"}})
     await act(c, "recurring.create", {"project_id": pr["id"], "lines": [{"name": "Retainer", "qty": 1, "price_paise": 5000000}], "day_of_month": 1})

@@ -3,8 +3,8 @@ import asyncio
 from datetime import timedelta
 
 from conftest import act, client, login, outbox, ready_practice, run_jobs
-from core.db import get_db
-from core.util import advance_clock, now
+from app.db import get_db
+from app.core.util import advance_clock, now
 
 
 async def setup_owner(phone="+919822200001"):
@@ -288,9 +288,9 @@ async def test_promo_code_can_never_make_the_total_zero():
     await act(c, "promo.save", {"code": "ALL", "kind": "flat", "value": 9999999})
     pr = await act(c, "projects.create", {"name": "X", "contact": {"name": "Ravi", "email": "ravi@x.in"}})
     inv = await act(c, "invoices.create", {"project_id": pr["id"], "lines": [{"name": "Session", "qty": 1, "price_paise": 500000}]})
-    from actions.money import apply_promo
-    from core.context import system_ctx
-    from core.util import AppError
+    from app.domain.billing.money import apply_promo
+    from app.core.context import system_ctx
+    from app.core.util import AppError
     ctx = system_ctx(ws["id"])
     try:
         await apply_promo(ctx, await ctx.data.invoices.get(inv["id"]), "ALL")
@@ -309,7 +309,7 @@ async def test_late_fee_day_29_no_fee_day_31_fee_once():
     a, b = await mk(), await mk()
     for inv in (a, b):
         await act(c, "invoices.send", {"id": inv["id"]})
-    from jobs import j_money
+    from app.workers.jobs import j_money
     advance_clock(days=30)  # day 29 after due
     await act(c, "payments.confirm", {"invoice_id": a["id"], "item_id": (await act(c, "invoices.get", {"id": a["id"]}))["schedule"][0]["id"]})
     await j_money()

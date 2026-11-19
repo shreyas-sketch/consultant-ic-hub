@@ -10,11 +10,11 @@ os.environ.update({"QA_MODE": "true", "QA_SEED": "false", "RUN_JOBS": "false"})
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 sys.path.insert(0, os.path.join(ROOT, "backend"))
 
-import server  # noqa: E402,F401
-from actions.registry import ACTIONS  # noqa: E402
-from agents.defs import AGENTS  # noqa: E402
-from agents.runtime import GUARD  # noqa: E402
-from core.limits import REGISTRY  # noqa: E402
+from app import main as server  # noqa: E402,F401
+from app.domain.registry import ACTIONS  # noqa: E402
+from app.agents.defs import AGENTS  # noqa: E402
+from app.agents.runtime import GUARD  # noqa: E402
+from app.core.limits import REGISTRY  # noqa: E402
 
 DOCS = os.path.join(ROOT, "docs")
 os.makedirs(DOCS, exist_ok=True)
