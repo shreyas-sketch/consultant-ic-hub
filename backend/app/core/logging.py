@@ -53,7 +53,7 @@ def setup_logging():
     root.setLevel(settings.LOG_LEVEL)
     # uvicorn's access log is replaced by our middleware (it has the request id and timing).
     logging.getLogger("uvicorn.access").disabled = True
-    for noisy in ("apscheduler", "pymongo", "httpx", "botocore", "urllib3"):
+    for noisy in ("apscheduler", "pymongo", "httpx", "botocore", "urllib3", "fontTools", "weasyprint"):
         logging.getLogger(noisy).setLevel(logging.WARNING)
     _configured = True
 

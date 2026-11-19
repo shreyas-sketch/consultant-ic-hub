@@ -366,7 +366,7 @@ async def test_screenshot_to_lead():
 
 async def test_setup_agent_builds_a_usable_account_from_the_interview():
     c = await login("+919833300099", "New Consultant")
-    from app.db.seed import SETUP
+    from app.qa.seed import SETUP
     q = await act(c, "onboarding.questions")
     assert 8 <= len(q["questions"]) <= 10
     out = await act(c, "onboarding.finish", {"answers": SETUP})

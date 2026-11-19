@@ -51,7 +51,7 @@ async function as(browser, persona) {
   return { ctx, p };
 }
 
-const browser = await chromium.launch({ executablePath: "/usr/bin/google-chrome", args: ["--no-sandbox"] });
+const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || "/usr/bin/google-chrome", args: ["--no-sandbox"] });
 try {
   const anon = await browser.newContext();
   await visit(anon, "/login", "login");

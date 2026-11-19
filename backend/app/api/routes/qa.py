@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/qa", tags=["qa"])
 @router.post("/login")
 async def qa_login(body: dict, response: Response):
     from app.auth import default_workspace, login_phone, start_session
-    from app.db.seed import PERSONAS
+    from app.qa.seed import PERSONAS
     phone = PERSONAS.get(body.get("persona", "owner"))
     if not phone:
         raise AppError("invalid", "Unknown persona.", 400)

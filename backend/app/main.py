@@ -39,7 +39,7 @@ async def startup():
         await ensure_indexes()
     await migrate()
     if settings.QA_MODE and settings._b("QA_SEED", "true"):
-        from app.db.seed import seed
+        from app.qa.seed import seed
         await seed()
 
 

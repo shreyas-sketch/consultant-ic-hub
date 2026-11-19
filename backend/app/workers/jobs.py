@@ -20,18 +20,7 @@ BATCH = 500             # documents per round trip when a job streams a collecti
 LEASE_SECONDS = 300     # renewed every 100 s while the job runs
 
 
-async def lease(name, seconds):
-    db = get_db()
-    try:
-        r = await db.job_locks.find_one_and_update({"_id": name, "$or": [{"until": None}, {"until": {"$lt": now()}}]},
-                                                   {"$set": {"until": now() + timedelta(seconds=seconds)}}, upsert=True)
-        return r is not None
-    except Exception:  # duplicate key: another worker holds it
-        return False
-
-
-async def release(name):
-    await get_db().job_locks.update_one({"_id": name}, {"$set": {"until": None}})
+from app.db.locks import acquire as lease, release, renew  # noqa: E402
 
 
 async def workspaces():
@@ -390,7 +379,7 @@ async def _keep_lease(name, seconds):
     """Renew the job's lease while it runs, so a long job is never picked up twice."""
     while True:
         await asyncio.sleep(seconds / 3)
-        await get_db().job_locks.update_one({"_id": name}, {"$set": {"until": now() + timedelta(seconds=seconds)}})
+        await renew(name, seconds)
 
 
 async def run_job(name, force=False):
