@@ -15,8 +15,6 @@ dnspython==2.9.2
 boto3>=1.35          # only used when VENDOR_STORAGE=live
 sentry-sdk>=2.18     # only used when SENTRY_DSN is set
 
-# QA mode and tests (in-memory database)
+# QA_MODE demo deployments (in-memory database)
 mongomock==4.3.0
 mongomock-motor==0.0.36
-pytest==9.1.1
-pytest-asyncio==1.4.1.post1

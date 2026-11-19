@@ -61,6 +61,8 @@ async def lifespan(app: FastAPI):
     if settings.RUN_JOBS:
         from app.workers.jobs import start_scheduler
         sched = start_scheduler()
+    if settings.QA_MODE and settings.QA_DB != "mongo" and int(__import__("os").getenv("WEB_CONCURRENCY", "1")) > 1:
+        log.warning("QA_MODE uses an in-memory database per process: set WEB_CONCURRENCY=1 or every worker sees different data")
     log.info("web started", extra={"fields": {"version": __version__, "env": settings.ENVIRONMENT,
                                               "qa": settings.QA_MODE, "jobs": settings.RUN_JOBS}})
     yield
