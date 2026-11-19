@@ -73,7 +73,11 @@ async def agents_runs(ctx, p: RunsIn):
     if p.agent:
         f["agent"] = p.agent
     if p.project_id:
+        await perm.project(ctx, p.project_id)
         f["project_id"] = p.project_id
+    elif ctx.role not in perm.SEE_ALL:
+        vis = [x["_id"] for x in await ctx.data.projects.find(perm.visible_filter(ctx), projection={"_id": 1})]
+        f["project_id"] = {"$in": vis}
     return clean(await ctx.data.agent_runs.find(f, sort=[("created_at", -1)], limit=min(p.limit, 200)))
 
 
@@ -81,6 +85,10 @@ async def agents_runs(ctx, p: RunsIn):
 async def agents_run_get(ctx, p):
     r = await ctx.data.agent_runs.get(p.id)
     if not r:
+        raise not_found("That run")
+    if r.get("project_id"):
+        await perm.project(ctx, r["project_id"])
+    elif ctx.role not in perm.SEE_ALL:
         raise not_found("That run")
     return clean(r)
 

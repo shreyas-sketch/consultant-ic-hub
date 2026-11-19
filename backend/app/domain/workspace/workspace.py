@@ -241,8 +241,8 @@ async def stages_list(ctx, p):
 
 
 class StagesSave(P):
-    stages: list  # [{id?, name, group}]
-    stage_rules: Optional[list] = None
+    stages: list[dict]  # [{id?, name, group}]
+    stage_rules: Optional[list[dict]] = None
 
 
 @action("stages.save", "internal", StagesSave, roles=ADMINS, desc="Rename, add or reorder pipeline stages (up to 20).")

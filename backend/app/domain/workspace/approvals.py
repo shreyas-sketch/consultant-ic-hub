@@ -42,6 +42,7 @@ class ListIn(P):
 async def approvals_list(ctx, p: ListIn):
     f = {"status": p.status}
     if p.project_id:
+        await perm.project(ctx, p.project_id)
         f["project_id"] = p.project_id
     rows = await ctx.data.approvals.find(f, sort=[("created_at", -1)], limit=200)
     out = []
@@ -57,6 +58,19 @@ async def approvals_list(ctx, p: ListIn):
     return out
 
 
+async def _may_decide(ctx, approval_id):
+    """Deciding needs the right to act on the approval's project (checked before anything changes).
+    Approvals with no project (practice-wide) are for Owners, Admins and Managers."""
+    a = await ctx.data.approvals.get(approval_id)
+    if not a:
+        raise not_found("That item")
+    if a.get("project_id"):
+        await perm.project(ctx, a["project_id"], act=True)
+    elif ctx.role not in perm.SEE_ALL:
+        raise not_found("That item")
+    return a
+
+
 class DecideIn(P):
     id: str
     edits: Optional[dict] = None   # changed args, e.g. {"subject": ..., "body": ...}
@@ -64,14 +78,10 @@ class DecideIn(P):
 
 @action("approvals.approve", "internal", DecideIn, agent_ok=False, desc="Approve and run a prepared action (optionally after editing it).")
 async def approvals_approve(ctx, p: DecideIn):
+    await _may_decide(ctx, p.id)
     a = await ctx.data.approvals.find_one_and_update({"_id": p.id, "status": "pending"}, {"$set": {"status": "executing", "decided_by": ctx.user_id}})
     if not a:
         raise AppError("gone", "This item was already handled or has expired.", 409)
-    if a.get("project_id"):
-        pr = await ctx.data.projects.get(a["project_id"])
-        if not pr or not perm.can_see(ctx, pr):
-            await ctx.data.approvals.update({"_id": a["_id"]}, {"status": "pending"})
-            raise not_found("That item")
     args = dict(a["args"])
     if p.edits:
         args.update({k: v for k, v in p.edits.items() if k in ("subject", "body", "channel", "message", "start", "amount_paise", "wa_params")})
@@ -92,6 +102,7 @@ async def approvals_approve(ctx, p: DecideIn):
 
 @action("approvals.skip", "internal", DecideIn, agent_ok=False, desc="Skip a prepared action. Nothing is sent.")
 async def approvals_skip(ctx, p: DecideIn):
+    await _may_decide(ctx, p.id)
     a = await ctx.data.approvals.find_one_and_update({"_id": p.id, "status": "pending"}, {"$set": {"status": "skipped", "decided_by": ctx.user_id,
                                                                                                   "decided_at": now()}})
     if not a:

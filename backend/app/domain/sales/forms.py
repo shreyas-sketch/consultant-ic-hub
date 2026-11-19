@@ -61,6 +61,8 @@ async def forms_save(ctx, p: FormIn):
         n = await ctx.data.lead_forms.count({"live": True, **({"_id": {"$ne": p.id}} if p.id else {})})
         await limits.check_count(ctx, "live_lead_forms", n)
     if p.id:
+        if not await ctx.data.lead_forms.get(p.id):
+            raise not_found("That form")
         await ctx.data.lead_forms.update({"_id": p.id}, doc)
         f = await ctx.data.lead_forms.get(p.id)
     else:

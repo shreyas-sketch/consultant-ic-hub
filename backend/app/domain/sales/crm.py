@@ -536,6 +536,10 @@ async def tasks_complete(ctx, p: IdIn):
     t = await ctx.data.tasks.get(p.id)
     if not t:
         raise not_found("That task")
+    if t.get("project_id"):
+        await perm.project(ctx, t["project_id"], act=True)
+    elif ctx.role not in perm.ACT_ALL and t.get("assignee_id") not in (None, ctx.user_id):
+        raise not_found("That task")
     if t.get("audience") == "client":
         from app.domain.engagement.client_tasks import complete
         await complete(ctx, t, by="consultant")
@@ -558,6 +562,7 @@ async def tasks_list(ctx, p: TaskList):
     from app.core.util import IST
     f = {}
     if p.project_id:
+        await perm.project(ctx, p.project_id)
         f["project_id"] = p.project_id
     if p.mine or ctx.role in ("member", "collaborator"):
         f["assignee_id"] = ctx.user_id

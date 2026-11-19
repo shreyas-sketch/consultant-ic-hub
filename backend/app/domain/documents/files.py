@@ -420,6 +420,7 @@ async def files_list(ctx, p):
     vis = [x["_id"] for x in await ctx.data.projects.find(perm.visible_filter(ctx), projection={"_id": 1})]
     f = {"project_id": {"$in": vis}}
     if p.project_id:
+        await perm.project(ctx, p.project_id)
         f["project_id"] = p.project_id
     rows = await ctx.data.client_files.find(f, sort=[("updated_at", -1)], limit=100, projection={"pages": 0})
     names = {x["_id"]: x["name"] for x in await ctx.data.projects.find({"_id": {"$in": [r["project_id"] for r in rows]}})}

@@ -707,6 +707,7 @@ async def payments_list_due(ctx, p: ListDue):
     names = {x["_id"]: x["name"] for x in vis}
     f = {"project_id": {"$in": list(names)}, "status": {"$nin": ["draft", "void"]}}
     if p.project_id:
+        await perm.project(ctx, p.project_id)
         f["project_id"] = p.project_id
     groups = {"paid": [], "processing": [], "upcoming": [], "overdue": []}
     for inv in await ctx.data.invoices.find(f, sort=[("created_at", -1)], limit=1000):

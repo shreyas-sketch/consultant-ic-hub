@@ -183,6 +183,8 @@ async def register(request: Request):
         body = await request.json()
     except Exception:
         return JSONResponse({"error": "invalid_client_metadata", "error_description": "Body must be JSON."}, 400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "invalid_client_metadata", "error_description": "Body must be a JSON object."}, 400)
     uris = body.get("redirect_uris") or []
     if not isinstance(uris, list) or not uris or not all(isinstance(u, str) for u in uris):
         return JSONResponse({"error": "invalid_redirect_uri", "error_description": "redirect_uris is required."}, 400)
