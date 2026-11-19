@@ -30,6 +30,7 @@ MONGO_URL=${{MongoDB.MONGO_URL}}
 DB_NAME=practice_os
 APP_URL=https://<your web domain>
 ADMIN_PHONES=+91XXXXXXXXXX
+HOOK_SECRET=<python -c "import secrets; print(secrets.token_urlsafe(32))">
 VENDOR_STORAGE=live
 S3_BUCKET=${{Bucket.BUCKET}}                 # check the exact names on the bucket's Variables tab
 S3_ENDPOINT_URL=${{Bucket.ENDPOINT}}
@@ -45,6 +46,8 @@ Per service:
 | `RUN_JOBS` | `false` | `true` |
 | `WEB_CONCURRENCY` | `2` (uvicorn processes per replica; raise with CPU) | not used |
 | `ENSURE_INDEXES_ON_START` | `true` | `false` (web's pre-deploy already did it) |
+
+Webhook URLs for providers carry the secret: `https://<app>/api/hooks/whatsapp-inbound?secret=<HOOK_SECRET>` (also `email-inbound`, `email-events`, `meetbot`).
 
 Then switch on each real vendor (`VENDOR_AI=live` + `ANTHROPIC_API_KEY`, `VENDOR_WHATSAPP=live` + `AISENSY_API_KEY`, ...) as its keys arrive. The full list with comments is in `backend/.env.example`.
 

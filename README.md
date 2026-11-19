@@ -27,7 +27,7 @@ cd backend && pip install -r requirements-dev.txt && python ../scripts/qa_server
 ## Tests
 
 ```bash
-cd backend && python -m pytest -q          # 114 tests, about 8 seconds
+cd backend && python -m pytest -q          # 128 tests, about 20 seconds
 ```
 
 ```bash

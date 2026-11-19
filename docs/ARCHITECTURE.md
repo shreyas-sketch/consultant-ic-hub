@@ -145,6 +145,6 @@ Static assets are content-hashed and served with `Cache-Control: immutable` for 
 
 ## Testing
 
-- `backend/tests`: 114 tests on the in-memory database, including the platform guarantees above (layering, indexes, TTLs, migrations, storage confinement, upload sniffing, rate limits, headers, PDF escaping, config refusal, lease behaviour).
+- `backend/tests`: 128 tests, run on the in-memory database and on real MongoDB, including the platform guarantees above (layering, indexes, TTLs, migrations, storage confinement, upload sniffing, rate limits, headers, PDF escaping, config refusal, lease behaviour).
 - `scripts/crawl.mjs`: opens every screen at 390 px and 1280 px and fails on 5xx, page errors, sideways scroll, `NaN`/`undefined` or raw ISO dates.
 - CI (`.github/workflows/ci.yml`): backend tests, frontend lint + build, Docker image build.
