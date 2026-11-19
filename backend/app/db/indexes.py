@@ -16,6 +16,7 @@ from app.db.collections import TENANT_COLLECTIONS
 
 log = logging.getLogger("app.db.indexes")
 DAY = 86400
+STAFF_LOCK_WINDOW_S = 15 * 60   # failed staff sign-ins are counted over this window
 
 
 @dataclass
@@ -79,6 +80,8 @@ def specs():
         # Keep used refresh tokens a week past expiry so reuse can still be detected.
         Ix("oauth_tokens", ["expires_at"], ttl=7 * DAY),
         Ix("mcp_tokens", ["token_hash"], unique=True),
+        Ix("login_failures", ["key", "at"]),
+        Ix("login_failures", ["at"], ttl=STAFF_LOCK_WINDOW_S, name="at_ttl"),
         Ix("account_overrides", [WS, "key"]),
         Ix("job_runs", ["job", ("started_at", -1)]),
         Ix("job_runs", ["started_at"], ttl=settings.RETAIN_JOB_RUNS_DAYS * DAY, name="started_at_ttl"),

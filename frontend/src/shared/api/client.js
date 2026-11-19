@@ -11,12 +11,14 @@ export class ApiError extends Error {
 }
 
 const PLAIN = "Something went wrong. Please try again.";
-const PUBLIC_PREFIXES = ["/login", "/c/"];
+const PUBLIC_PREFIXES = ["/login", "/c/", "/admin/login"];
 
 function goToLogin() {
   const here = location.pathname + location.search;
   if (PUBLIC_PREFIXES.some((p) => location.pathname.startsWith(p))) return;
-  location.href = `/login?next=${encodeURIComponent(here)}`;
+  // The Admin screen has its own (email) sign-in; everything else uses the phone-code login.
+  if (location.pathname.startsWith("/admin")) location.href = "/admin/login";
+  else location.href = `/login?next=${encodeURIComponent(here)}`;
 }
 
 export async function req(method, url, body) {

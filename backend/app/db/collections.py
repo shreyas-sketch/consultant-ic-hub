@@ -24,5 +24,5 @@ GLOBAL_COLLECTIONS = [
     "workspaces", "users", "otp_codes", "sessions_auth", "invites", "limit_values", "account_overrides",
     "admin_changes", "admin_settings", "job_locks", "job_runs", "vendor_log", "client_sessions",
     "domains", "oauth_clients", "oauth_requests", "oauth_codes", "oauth_tokens", "oauth_states",
-    "schema_migrations",
+    "schema_migrations", "login_failures",
 ]
