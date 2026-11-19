@@ -1,0 +1,28 @@
+@import "@fontsource-variable/manrope";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Client pages: the light "print" version of the design system, in the consultant's own colours. */
+:root { --c-primary: #c9a84c; --c-btn-text: #14151a; --c-paper: #faf8f3; --c-text: #14151a; --c-radius: 14px; --c-pill: 999px; --c-deep: #8f7635; color-scheme: light; }
+html, body { background: var(--c-paper); color: var(--c-text); font-family: "Manrope Variable", Manrope, Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+* { min-width: 0; }
+input, select, textarea, button { font: inherit; }
+input, select, textarea { font-size: 16px; }
+:focus-visible { outline: 2px solid var(--c-primary); outline-offset: 2px; }
+.c-card { background: #fff; border: 1px solid #e6e1d6; border-radius: var(--c-radius); }
+.c-btn { background: var(--c-primary); color: var(--c-btn-text); border-radius: var(--c-pill); font-weight: 800; min-height: 52px; padding: 0 24px; transition: opacity .15s; }
+.c-btn:disabled { opacity: .4; }
+.c-btn2 { border: 1px solid #d8d2c4; border-radius: var(--c-pill); font-weight: 700; min-height: 48px; padding: 0 18px; background: #fff; }
+.c-in { width: 100%; border: 1px solid #ddd6c8; background: #fff; border-radius: 12px; padding: 12px 14px; }
+.c-in:focus { border-color: var(--c-primary); outline: none; }
+.c-kicker { font-size: 12px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; color: var(--c-deep); }
+.c-muted { color: #5a5d66; }
+.c-money { color: var(--c-deep); font-weight: 800; font-variant-numeric: tabular-nums; }
+.c-prose h1 { font-size: 28px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.15; margin: 0 0 10px; }
+.c-prose h2 { font-size: 21px; font-weight: 800; margin: 16px 0 6px; } .c-prose h3 { font-size: 16px; font-weight: 700; margin: 12px 0 4px; }
+.c-prose p { margin: 8px 0; line-height: 1.65; } .c-prose ul { list-style: disc; padding-left: 22px; } .c-prose ol { list-style: decimal; padding-left: 22px; }
+.c-prose table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 14px; } .c-prose td, .c-prose th { border-bottom: 1px solid #e6e1d6; padding: 7px 4px; text-align: left; vertical-align: top; }
+.c-prose .num { text-align: right; } .c-prose .muted { color: #5a5d66; font-size: 13px; }
+.rise { animation: rise .32s cubic-bezier(.2,.8,.2,1) both; } @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .rise { animation: none; } }

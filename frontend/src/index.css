@@ -1,0 +1,51 @@
+@import "@fontsource-variable/manrope";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Consultant app: dark only. "A boardroom at night, not a tech launch." */
+:root {
+  --bg: #14151a; --panel: #1e2027; --panel-raised: #262932; --hairline: #2a2d36;
+  --ivory: #f2eee6; --ivory-70: rgba(242, 238, 230, 0.7); --ivory-35: rgba(242, 238, 230, 0.35);
+  --gold: #c9a84c; --gold-light: #f0d98a; --gold-deep: #8f7635; --teal: #2ed3b7; --teal-ink: #0e2b26; --alert: #e0533d;
+  color-scheme: dark;
+}
+html, body { background: var(--bg); color: var(--ivory); font-family: "Manrope Variable", Manrope, Inter, system-ui, sans-serif; }
+body {
+  background-image:
+    radial-gradient(ellipse 1400px 1000px at 0% 0%, #1e2027 0%, rgba(30, 32, 39, 0.3) 50%, transparent 80%);
+  background-attachment: fixed; min-height: 100vh; -webkit-font-smoothing: antialiased;
+}
+body::before {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: 0.045;
+  background-image: linear-gradient(var(--ivory) 1px, transparent 1px), linear-gradient(90deg, var(--ivory) 1px, transparent 1px);
+  background-size: 48px 48px; -webkit-mask-image: radial-gradient(ellipse at 30% 0%, #000 0%, transparent 70%);
+  mask-image: radial-gradient(ellipse at 30% 0%, #000 0%, transparent 70%);
+}
+#root { position: relative; z-index: 1; }
+* { min-width: 0; }
+input, select, textarea, button { font: inherit; }
+input, select, textarea { font-size: 16px; }
+input[type="number"]::-webkit-inner-spin-button, input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+input[type="number"] { -moz-appearance: textfield; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 8px; }
+.ai :focus-visible, .ai:focus-visible { outline-color: var(--teal); }
+.tnum { font-variant-numeric: tabular-nums; }
+.kicker { font-size: 12px; font-weight: 500; letter-spacing: 0.18em; text-transform: uppercase; color: var(--gold); }
+.kicker-ai { color: var(--teal); }
+.rise { animation: rise 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.pulse-dot { animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: 0.25; } 50% { opacity: 1; } }
+.skeleton { background: linear-gradient(90deg, #1e2027 0%, #262932 50%, #1e2027 100%); background-size: 200% 100%; animation: sk 1.4s linear infinite; border-radius: 10px; }
+@keyframes sk { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .rise, .pulse-dot, .skeleton { animation: none !important; } * { transition: none !important; } }
+.scroll-x { overflow-x: auto; scrollbar-width: none; } .scroll-x::-webkit-scrollbar { display: none; }
+.prose-dark h1 { font-size: 26px; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 8px; }
+.prose-dark h2 { font-size: 20px; font-weight: 800; margin: 12px 0 6px; } .prose-dark h3 { font-size: 16px; font-weight: 700; margin: 10px 0 4px; }
+.prose-dark p { margin: 6px 0; line-height: 1.6; } .prose-dark ul { list-style: disc; padding-left: 20px; } .prose-dark ol { list-style: decimal; padding-left: 20px; }
+.prose-dark table { width: 100%; border-collapse: collapse; } .prose-dark td, .prose-dark th { border-bottom: 1px solid var(--hairline); padding: 6px 4px; text-align: left; }
+.ProseMirror { outline: none; min-height: 80px; }
+.ProseMirror p.is-editor-empty:first-child::before { content: attr(data-placeholder); color: var(--ivory-35); float: left; height: 0; pointer-events: none; }
