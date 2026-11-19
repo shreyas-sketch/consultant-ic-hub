@@ -12,6 +12,8 @@ from datetime import date as Date
 from datetime import timedelta
 from typing import Optional
 
+from pymongo.errors import DuplicateKeyError
+
 from app.domain import perm
 from app.domain.billing import rates
 from app.domain.registry import ADMINS, STAFF, P, action
@@ -79,9 +81,13 @@ async def retainer_for(ctx, project_id):
 
 async def cycle_doc(ctx, b, start, end):
     key = f"{b['_id']}:{start}"
-    return await ctx.data.budget_cycles.find_one_and_update(
-        {"cycle_key": key}, {"$setOnInsert": {"cycle_key": key, "budget_id": b["_id"], "project_id": b["project_id"], "start": start,
-                                              "end": end, "alerts_sent": []}}, upsert=True)
+    try:
+        return await ctx.data.budget_cycles.find_one_and_update(
+            {"cycle_key": key}, {"$setOnInsert": {"cycle_key": key, "budget_id": b["_id"], "project_id": b["project_id"], "start": start,
+                                                  "end": end, "alerts_sent": []}}, upsert=True)
+    except DuplicateKeyError:
+        # Another check created this cycle at the same moment: use theirs.
+        return await ctx.data.budget_cycles.find_one({"cycle_key": key})
 
 
 def fmt_amount(b, v):
@@ -163,7 +169,7 @@ async def budgets_create(ctx, p: BudgetIn):
     if await active_budget(ctx, p.project_id):
         raise AppError("invalid", "This project already has a budget. Edit it instead.", 400)
     doc = await _validate(ctx, p)
-    b = await ctx.data.budgets.insert(dict(doc, project_id=p.project_id, active=True, source="manual"))
+    await ctx.data.budgets.insert(dict(doc, project_id=p.project_id, active=True, source="manual"))
     await check(ctx, p.project_id)
     return await budget_view(ctx, p.project_id)
 

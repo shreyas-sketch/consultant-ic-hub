@@ -90,11 +90,20 @@ async def j_outbound():
         ctx = system_ctx(f["workspace_id"], actor="user")
         ctx.user_id = f["scheduled_send"].get("user_id")
         sp = dict(f["scheduled_send"])
-        await db.client_files.update_one({"_id": f["_id"]}, {"$set": {"scheduled_send": None}})
+        # Claim it (conditional), so it is sent once even if the job overlaps itself.
+        got = await db.client_files.update_one({"_id": f["_id"], "scheduled_send.schedule_at": sp.get("schedule_at")},
+                                               {"$set": {"scheduled_send": None}})
+        if not got.modified_count:
+            continue
         try:
             await do_send(ctx, f, SendIn(**{k: v for k, v in sp.items() if k in SendIn.model_fields and k != "schedule_at"}))
-        except Exception:
-            pass
+        except Exception as e:
+            # Don't lose it silently: tell the consultant it didn't go out, and why.
+            log.exception("scheduled send failed for file %s", f["_id"])
+            from app.core.events import notify
+            why = getattr(e, "message", None) or "Something went wrong."
+            await notify(ctx, f"“{f.get('title', 'A file')}” was scheduled to send but didn't go out: {why} Open it and send again.",
+                         "error", link=f"/files/{f['_id']}", user_ids=[sp.get("user_id")] if sp.get("user_id") else None)
         n += 1
     return n
 
@@ -174,7 +183,7 @@ async def j_money():
                         from app.domain.registry import call
                         await call(ctx.child(idem_key=f"invrem:{inv['_id']}:{s['id']}:{off}"), "invoices.remind", {"id": inv["_id"], "item_id": s["id"]})
                     except Exception:
-                        pass
+                        log.exception("invoice reminder failed: invoice %s item %s", inv["_id"], s["id"])
         if changed:
             await save_invoice(ctx, inv)
             n += 1
@@ -208,8 +217,12 @@ async def j_recurring():
         await ctx.data.invoices.update({"_id": inv["_id"]}, {"recurring_id": r["_id"]})
         try:
             await invoices_send(ctx, SendInv(id=inv["_id"], channel=r.get("channel", "both")))
-        except Exception:
-            pass
+        except Exception as e:
+            log.exception("recurring invoice %s raised but not sent", inv["_id"])
+            from app.core.events import notify
+            await notify(ctx, f"This month's recurring invoice was made but couldn't be sent: "
+                              f"{getattr(e, 'message', None) or 'something went wrong'}. Send it from Payments.", "error",
+                         link="/payments")
         n += 1
     return n
 
@@ -337,6 +350,7 @@ async def j_inbox_finder():
         try:
             msgs = await vendors.inbox_new_messages(conn, since)
         except Exception:
+            log.warning("inbox lead finder could not read connection %s", conn["_id"], exc_info=True)
             continue
         await db.connections.update_one({"_id": conn["_id"]}, {"$set": {"last_scan": now()}})
         for m in msgs:

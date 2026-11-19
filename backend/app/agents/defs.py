@@ -361,11 +361,11 @@ async def collections_plan(ctx, pack, trigger, instruction, project_id, chat):
         v = await build(ctx, pr, c)
         link = f"{client_base(ws)}/i/{inv['token']}"
         if days <= 7:
-            tone, body = "gentle", f"<p>Hi {v['client.first_name']},</p><p>A gentle reminder that {inr(amount)} ({s['label']}) was due on {fmt_dt(s['due_date']).split(',')[0]}. You can pay by UPI here: {link}</p><p>Thank you!</p>"
+            body = f"<p>Hi {v['client.first_name']},</p><p>A gentle reminder that {inr(amount)} ({s['label']}) was due on {fmt_dt(s['due_date']).split(',')[0]}. You can pay by UPI here: {link}</p><p>Thank you!</p>"
         elif days <= 21:
-            tone, body = "firm", f"<p>Hi {v['client.first_name']},</p><p>{inr(amount)} for {s['label']} is now {days} days overdue. Could you clear it this week? Pay here: {link}</p><p>If there's an issue, just reply and we'll sort it out.</p>"
+            body = f"<p>Hi {v['client.first_name']},</p><p>{inr(amount)} for {s['label']} is now {days} days overdue. Could you clear it this week? Pay here: {link}</p><p>If there's an issue, just reply and we'll sort it out.</p>"
         else:
-            tone, body = "final", f"<p>Hi {v['client.first_name']},</p><p>{inr(amount)} has been outstanding for {days} days. Please pay by this Friday ({link}) or let me know a date that works, so we can keep the work moving.</p>"
+            body = f"<p>Hi {v['client.first_name']},</p><p>{inr(amount)} has been outstanding for {days} days. Please pay by this Friday ({link}) or let me know a date that works, so we can keep the work moving.</p>"
         args = {"project_id": pr["_id"], "channel": "email" if c.get("email") else "whatsapp"}
         if c.get("email"):
             args.update(subject=f"Payment reminder: {inr(amount)}", body=body)

@@ -3,6 +3,8 @@ import hashlib
 import re
 from typing import Optional
 
+from pymongo.errors import DuplicateKeyError
+
 from app.domain.documents import defaults
 from app.domain.registry import ADMINS, ALL, OWNER, STAFF, P, action
 from app.core import limits
@@ -50,7 +52,15 @@ async def create_workspace(user, name="My practice"):
                        "hide_money_roles": [], "revenue_goal_paise": 0, "sending_domain": "", "portal_link_default": True,
                        "timezone": "Asia/Kolkata", "notetaker_name": f"{name} notetaker"},
           "domains": [], "connections": {}}
-    await db.workspaces.insert_one(ws)
+    for attempt in range(8):
+        try:
+            await db.workspaces.insert_one(ws)
+            break
+        except DuplicateKeyError:
+            # Another practice with the same name was created at the same moment: take the next address.
+            ws["slug"] = await unique_slug(name if attempt < 4 else f"{name}-{new_id()[:4]}")
+    else:
+        raise AppError("busy", "Busy, please try again.", 503)
     ctx = system_ctx(ws_id)
     await ctx.data.memberships.insert({"user_id": user["_id"], "role": "owner", "active": True, "project_ids": [],
                                        "phone": user["phone"], "name": user.get("name", "")})

@@ -307,13 +307,25 @@ async def invoices_update(ctx, p: InvoiceUpdate):
     return await view(ctx, inv)
 
 
+async def next_seq(ctx, key):
+    """Atomic per-workspace counter. Two first-ever increments can race on the upsert
+    (one gets a duplicate key on _id); the loser simply increments the row that now exists."""
+    for _ in range(3):
+        try:
+            c = await ctx.data.counters.find_one_and_update({"_id": key}, {"$inc": {"seq": 1}}, upsert=True)
+            return c["seq"]
+        except DuplicateKeyError:
+            continue
+    raise AppError("busy", "Busy, please try again.", 503)
+
+
 async def assign_number(ctx, inv):
     if inv.get("number"):
         return inv
     ws = await ctx.ws()
     fy = fy_of(now())
-    c = await ctx.data.counters.find_one_and_update({"_id": f"inv:{ctx.ws_id}:{fy}"}, {"$inc": {"seq": 1}}, upsert=True)
-    inv["number"] = f"{ws['invoice'].get('prefix', 'INV')}/{fy}/{c['seq']:04d}"
+    seq = await next_seq(ctx, f"inv:{ctx.ws_id}:{fy}")
+    inv["number"] = f"{ws['invoice'].get('prefix', 'INV')}/{fy}/{seq:04d}"
     inv["fy"] = fy
     inv["number_key"] = f"{ctx.ws_id}:{fy}:{inv['number']}"
     return inv
@@ -487,8 +499,8 @@ async def invoices_credit(ctx, p: CreditIn):
     if p.amount_paise <= 0 or p.amount_paise > inv["totals"]["total"]:
         raise AppError("invalid", "The credit amount must be more than zero and not more than the invoice total.", 400)
     fy = fy_of(now())
-    c = await ctx.data.counters.find_one_and_update({"_id": f"cn:{ctx.ws_id}:{fy}"}, {"$inc": {"seq": 1}}, upsert=True)
-    cn = await ctx.data.credit_notes.insert({"invoice_id": inv["_id"], "project_id": inv["project_id"], "number": f"CN/{fy}/{c['seq']:04d}",
+    seq = await next_seq(ctx, f"cn:{ctx.ws_id}:{fy}")
+    cn = await ctx.data.credit_notes.insert({"invoice_id": inv["_id"], "project_id": inv["project_id"], "number": f"CN/{fy}/{seq:04d}",
                                              "amount_paise": p.amount_paise, "reason": p.reason[:300]})
     await ledger(ctx, f"cn:{cn['_id']}", "credit_note", p.amount_paise, inv, ref=cn["_id"])
     await audit(ctx, "invoice.credit_note", inv["_id"], {"amount_paise": p.amount_paise})
@@ -537,6 +549,12 @@ async def client_claim(ctx, inv, item_id, method, reference="", screenshot_key=N
     if s["status"] == "paid":
         return {"ok": True, "already_paid": True}
     if s["status"] == "processing":
+        return {"ok": True, "already_claimed": True}
+    # Claim the line atomically: of several taps arriving together, only one moves it to processing.
+    got = await ctx.data.invoices.update(
+        {"_id": inv["_id"], "schedule": {"$elemMatch": {"id": item_id, "status": {"$nin": ["paid", "processing"]}}}},
+        {"schedule.$.status": "processing"})
+    if not got.modified_count:
         return {"ok": True, "already_claimed": True}
     claim = await ctx.data.payment_claims.insert({"invoice_id": inv["_id"], "project_id": inv["project_id"], "item_id": item_id,
                                                   "method": method, "reference": reference[:80], "screenshot_key": screenshot_key,

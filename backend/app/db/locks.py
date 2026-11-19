@@ -13,9 +13,10 @@ from app.core.util import now
 from app.db.client import get_db
 
 
-async def acquire(name: str, seconds: int) -> bool:
+async def acquire(name: str, seconds: int, db=None) -> bool:
+    db = db if db is not None else get_db()
     try:
-        r = await get_db().job_locks.find_one_and_update(
+        r = await db.job_locks.find_one_and_update(
             {"_id": name, "$or": [{"until": None}, {"until": {"$lt": now()}}]},
             {"$set": {"until": now() + timedelta(seconds=seconds)}},
             upsert=True, return_document=ReturnDocument.AFTER)
@@ -28,5 +29,5 @@ async def renew(name: str, seconds: int):
     await get_db().job_locks.update_one({"_id": name}, {"$set": {"until": now() + timedelta(seconds=seconds)}})
 
 
-async def release(name: str):
-    await get_db().job_locks.update_one({"_id": name}, {"$set": {"until": None}})
+async def release(name: str, db=None):
+    await (db if db is not None else get_db()).job_locks.update_one({"_id": name}, {"$set": {"until": None}})

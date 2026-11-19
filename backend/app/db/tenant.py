@@ -89,7 +89,7 @@ class Data:
         if not ws_id:
             raise ValueError("workspace_id is required")
         self.ws_id = ws_id
-        self._db = db or get_db()
+        self._db = db if db is not None else get_db()
 
     def __getattr__(self, name):
         if name.startswith("_"):

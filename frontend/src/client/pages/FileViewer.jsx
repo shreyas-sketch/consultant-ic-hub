@@ -5,7 +5,7 @@ import { Question } from "@/client/pages/Public";
 
 /** Review -> choose -> sign -> pay -> book, one page at a time, one big button at the bottom. */
 export function FileViewer({ preview }) {
-  const { slug, token, fileId } = useParams();
+  const { token, fileId } = useParams();
   const base = preview ? null : `/api/public/f/${token}`;
   const s = useLoad(() => (preview ? cget(`/api/preview/f/${fileId}`) : cget(`${base}?track=1`)), [token, fileId]);
   const [pi, setPi] = useState(0);

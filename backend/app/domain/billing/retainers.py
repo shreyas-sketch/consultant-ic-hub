@@ -179,7 +179,6 @@ async def close_period(ctx, r, per, end_on=None, force_lapse=False):
            "carried_out": [], "carried_out_minutes": 0, "lapsed_minutes": 0, "overage_minutes": 0, "overage_billed_minutes": 0,
            "borrowed_out_minutes": 0, "absorbed_minutes": 0, "overage_pending_minutes": 0, "end": per["end"]}
     next_borrow, pending_overage, ovr_rate = 0, None, 0
-    extra_lines = []
     if r["kind"] == "hours":
         avail = included + rec["carried_in_minutes"]
         rec["available"] = avail

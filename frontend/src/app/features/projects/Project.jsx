@@ -326,7 +326,7 @@ function TimeTab({ p, onChange }) {
   const un = useAct("time.unbilled", { project_id: p.id });
   const [log, setLog] = useState(false);
   const [inv, setInv] = useState(false);
-  const [sp, setSp] = useSearchParams();
+  const [, setSp] = useSearchParams();
   const item = un.data?.items?.[0];
   const reloadAll = () => { q.refetch(); un.refetch(); onChange(); };
   return (

@@ -112,11 +112,16 @@ async def lock_slot(ctx, st, start, session_id):
     """Unique lock per host and start time (1:1). Group sessions count seats."""
     if st.get("max_attendees", 1) > 1:
         gid = f"grp:{st['_id']}:{start.isoformat()}"
-        try:
-            await ctx.data.slot_locks.find_one_and_update({"_id": gid, "count": {"$lt": st["max_attendees"]}},
-                                                          {"$inc": {"count": 1}, "$set": {"start": start}}, upsert=True)
-        except DuplicateKeyError:
-            raise AppError("slot_taken", "This session is full. Please pick another time.", 409)
+        # A duplicate key means either "full" or "someone created the seat counter at the same moment";
+        # one retry tells them apart (the retry increments the counter that now exists, if a seat is left).
+        for attempt in range(2):
+            try:
+                await ctx.data.slot_locks.find_one_and_update({"_id": gid, "count": {"$lt": st["max_attendees"]}},
+                                                              {"$inc": {"count": 1}, "$set": {"start": start}}, upsert=True)
+                break
+            except DuplicateKeyError:
+                if attempt:
+                    raise AppError("slot_taken", "This session is full. Please pick another time.", 409)
         return [gid]
     keys = []
     try:

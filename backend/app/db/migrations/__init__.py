@@ -37,10 +37,10 @@ async def migrate(db=None, wait_seconds=120):
     import asyncio
 
     from app.db.client import get_db
-    db = db or get_db()
+    db = db if db is not None else get_db()
     t_end = time.time() + wait_seconds
     from app.db.locks import acquire, release
-    while not await acquire(LOCK, 900):
+    while not await acquire(LOCK, 900, db):
         if time.time() > t_end:
             raise RuntimeError("Another process has held the migration lock for too long.")
         await asyncio.sleep(2)
@@ -54,5 +54,5 @@ async def migrate(db=None, wait_seconds=120):
             log.info("migration applied: %s (%s)", m.ID, n)
             applied.append(m.ID)
     finally:
-        await release(LOCK)
+        await release(LOCK, db)
     return applied

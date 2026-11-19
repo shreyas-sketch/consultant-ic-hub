@@ -25,15 +25,26 @@ def pin_clock():
     advance_clock(seconds=(target - t).total_seconds())
 
 
+REAL_MONGO = os.getenv("QA_DB") == "mongo"   # QA_DB=mongo MONGO_URL=... runs the suite on a real server
+
+
 @pytest.fixture(autouse=True)
 async def fresh():
     reset_db()
+    if REAL_MONGO:
+        # Empty every collection but keep indexes (dropping the database per test is slow).
+        db = get_db()
+        for name in await db.list_collection_names():
+            await db[name].delete_many({})
     reset_clock()
     pin_clock()
     limits.bust_cache()
     await ensure_indexes()
     yield
     reset_clock()
+    if REAL_MONGO:
+        from app.db import close
+        close()
 
 
 def client():

@@ -182,7 +182,7 @@ async def ensure_indexes(db=None):
     from pymongo.errors import OperationFailure
 
     from app.db.client import get_db
-    db = db or get_db()
+    db = db if db is not None else get_db()
     made = 0
     for ix in specs():
         keys, kw = ix.spec()

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { BRAND } from "@/shared/brand";
 import { get, post } from "@/shared/api";
 import { Wordmark } from "@/app/layout/AppShell";
 import { Button, Input } from "@/app/ui";
