@@ -41,12 +41,24 @@ from app.core.security import decrypt, encrypt  # noqa: E402,F401  (re-exported)
 
 # ---------------- WhatsApp / SMS / OTP ----------------
 
-async def whatsapp_send(ws_id, to, template=None, params=None, text=None):
+def aisensy_number(to: str) -> str:
+    """AiSensy wants the number with country code and no '+', e.g. 919876543210."""
+    return "".join(ch for ch in str(to or "") if ch.isdigit())
+
+
+def otp_buttons(code: str) -> list:
+    """WhatsApp Authentication templates carry the code twice: in the text and in the
+    copy-code button. Without the button parameter WhatsApp drops the message after
+    the provider has accepted it (the provider still answers 200)."""
+    return [{"type": "button", "sub_type": "url", "index": 0, "parameters": [{"type": "text", "text": str(code)}]}]
+
+
+async def whatsapp_send(ws_id, to, template=None, params=None, text=None, buttons=None):
     m = mode("whatsapp")
     if m == "off":
         _off("WhatsApp")
     if m == "fake":
-        d = await _log("whatsapp", ws_id, to=to, template=template, params=params or [], text=text)
+        d = await _log("whatsapp", ws_id, to=to, template=template, params=params or [], text=text, buttons=buttons or [])
         return {"status": "sent", "provider_id": d["_id"]}
     async with httpx.AsyncClient(timeout=15) as c:
         if text is not None:
@@ -56,16 +68,26 @@ async def whatsapp_send(ws_id, to, template=None, params=None, text=None):
                              json={"to": to, "type": "text", "recipient_type": "individual",
                                    "text": {"body": text}})
         else:
-            r = await c.post("https://backend.aisensy.com/campaign/t1/api/v2",
-                             json={"apiKey": settings.AISENSY_API_KEY, "campaignName": settings.aisensy_campaign(template),
-                                   "destination": to, "userName": "client", "templateParams": params or []})
+            body = {"apiKey": settings.AISENSY_API_KEY, "campaignName": settings.aisensy_campaign(template),
+                    "destination": aisensy_number(to), "userName": "client", "templateParams": [str(x) for x in (params or [])]}
+            if buttons:
+                body["buttons"] = buttons
+            r = await c.post("https://backend.aisensy.com/campaign/t1/api/v2", json=body)
     if r.status_code >= 300:
         # The provider's reason, for the logs (never the key): wrong campaign name, unapproved template, bad number...
         log.warning("whatsapp send failed", extra={"fields": {
             "status": r.status_code, "campaign": settings.aisensy_campaign(template) if text is None else "(free text)",
             "to_suffix": str(to)[-4:], "reply": r.text[:300]}})
         raise AppError("vendor_failed", "The WhatsApp message could not be sent. Please try again.", 502)
-    return {"status": "sent", "provider_id": r.json().get("id") if r.content else None}
+    # Accepted is not delivered: keep the provider's reply so a later delivery failure can be traced.
+    log.info("whatsapp accepted", extra={"fields": {
+        "status": r.status_code, "campaign": settings.aisensy_campaign(template) if text is None else "(free text)",
+        "to_suffix": str(to)[-4:], "reply": r.text[:300]}})
+    try:
+        pid = r.json().get("id") if r.content else None
+    except ValueError:
+        pid = None
+    return {"status": "sent", "provider_id": pid}
 
 
 async def sms_send(to, text):
@@ -85,7 +107,7 @@ async def sms_send(to, text):
 async def otp_send(phone, code):
     """WhatsApp first, SMS as fallback."""
     try:
-        await whatsapp_send(None, phone, template="otp_login", params=[code])
+        await whatsapp_send(None, phone, template="otp_login", params=[code], buttons=otp_buttons(code))
         return "whatsapp"
     except AppError:
         # Fall back to SMS only when SMS really sends. Falling back to a fake SMS would
