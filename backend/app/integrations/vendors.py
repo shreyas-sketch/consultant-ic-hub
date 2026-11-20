@@ -8,6 +8,7 @@ each provider's public HTTP API but have NOT been tested against live keys yet
 import base64
 import hashlib
 import json
+import logging
 import random
 from datetime import timedelta
 from email.mime.text import MIMEText
@@ -20,6 +21,7 @@ from app.db import get_db
 from app.core.util import AppError, aware, new_id, now
 
 mode = settings.vendor_mode
+log = logging.getLogger("app.vendors")
 
 
 async def _log(kind, ws_id=None, **payload):
@@ -55,9 +57,13 @@ async def whatsapp_send(ws_id, to, template=None, params=None, text=None):
                                    "text": {"body": text}})
         else:
             r = await c.post("https://backend.aisensy.com/campaign/t1/api/v2",
-                             json={"apiKey": settings.AISENSY_API_KEY, "campaignName": template,
+                             json={"apiKey": settings.AISENSY_API_KEY, "campaignName": settings.aisensy_campaign(template),
                                    "destination": to, "userName": "client", "templateParams": params or []})
     if r.status_code >= 300:
+        # The provider's reason, for the logs (never the key): wrong campaign name, unapproved template, bad number...
+        log.warning("whatsapp send failed", extra={"fields": {
+            "status": r.status_code, "campaign": settings.aisensy_campaign(template) if text is None else "(free text)",
+            "to_suffix": str(to)[-4:], "reply": r.text[:300]}})
         raise AppError("vendor_failed", "The WhatsApp message could not be sent. Please try again.", 502)
     return {"status": "sent", "provider_id": r.json().get("id") if r.content else None}
 
@@ -82,6 +88,10 @@ async def otp_send(phone, code):
         await whatsapp_send(None, phone, template="otp_login", params=[code])
         return "whatsapp"
     except AppError:
+        # Fall back to SMS only when SMS really sends. Falling back to a fake SMS would
+        # tell the person "sent by SMS" while nothing arrives.
+        if mode("sms") != "live" and not settings.QA_MODE:
+            raise
         await sms_send(phone, f"Your login code is {code}. It expires in 10 minutes.")
         return "sms"
 

@@ -250,3 +250,42 @@ async def test_staff_sign_in_works_and_locks_after_repeated_wrong_passwords(monk
     advance_clock(minutes=16)
     r = await client().post("/api/auth/staff", json={"email": "team@example.in", "password": "correct horse battery"}, headers={"x-real-ip": "8.8.8.8"})
     assert r.status_code == 200
+
+
+def test_aisensy_campaign_names_can_be_overridden(monkeypatch):
+    from app.core import settings
+    assert settings.aisensy_campaign("otp_login") == "otp_login"
+    monkeypatch.setenv("AISENSY_CAMPAIGN_OTP_LOGIN", "hub_login_code_")
+    monkeypatch.setenv("AISENSY_CAMPAIGN_PAYMENT_REMINDER", " payment_reminder_ic ")
+    assert settings.aisensy_campaign("otp_login") == "hub_login_code_"
+    assert settings.aisensy_campaign("payment_reminder") == "payment_reminder_ic"
+    assert settings.aisensy_campaign("file_link") == "file_link"
+
+
+async def test_live_whatsapp_sends_the_overridden_campaign_and_logs_failures(monkeypatch, caplog):
+    import httpx as _httpx
+    from app.core import settings
+    from app.integrations import vendors
+    sent = []
+
+    class FakeClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def post(self, url, json=None, headers=None):
+            sent.append(json)
+            return _httpx.Response(400, json={"message": "Campaign not found"})
+
+    monkeypatch.setattr(settings, "QA_MODE", False)
+    monkeypatch.setenv("VENDOR_WHATSAPP", "live")
+    monkeypatch.setenv("VENDOR_SMS", "fake")
+    monkeypatch.setenv("AISENSY_CAMPAIGN_OTP_LOGIN", "hub_login_code_")
+    monkeypatch.setattr(vendors.httpx, "AsyncClient", FakeClient)
+    import logging
+    with caplog.at_level(logging.WARNING, logger="app.vendors"):
+        with pytest.raises(Exception) as e:
+            await vendors.otp_send("+919800000001", "123456")
+    assert sent[0]["campaignName"] == "hub_login_code_" and sent[0]["templateParams"] == ["123456"]
+    assert getattr(e.value, "code", "") == "vendor_failed"      # no silent fake-SMS fallback
+    rec = [r for r in caplog.records if r.getMessage() == "whatsapp send failed"]
+    assert rec and "Campaign not found" in rec[0].fields["reply"] and "apiKey" not in rec[0].fields["reply"]

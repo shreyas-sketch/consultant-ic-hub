@@ -105,6 +105,15 @@ def vendor_mode(name: str) -> str:
 
 # Provider keys (only read in live mode)
 AISENSY_API_KEY = os.getenv("AISENSY_API_KEY", "")
+
+
+def aisensy_campaign(template: str) -> str:
+    """AiSensy API campaign name for one of the app's WhatsApp messages.
+
+    Defaults to the app's own name (otp_login, payment_reminder, ...). Override any
+    of them with AISENSY_CAMPAIGN_<NAME>, e.g. AISENSY_CAMPAIGN_OTP_LOGIN=hub_login_code_.
+    """
+    return (os.getenv(f"AISENSY_CAMPAIGN_{template.upper()}") or "").strip() or template
 MSG91_AUTH_KEY = os.getenv("MSG91_AUTH_KEY", "")
 MSG91_TEMPLATE_ID = os.getenv("MSG91_TEMPLATE_ID", "")
 EMAIL_API_URL = os.getenv("EMAIL_API_URL", "")       # transactional email provider HTTP endpoint
