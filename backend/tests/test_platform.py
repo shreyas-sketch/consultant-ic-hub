@@ -286,6 +286,8 @@ async def test_live_whatsapp_sends_the_overridden_campaign_and_logs_failures(mon
         with pytest.raises(Exception) as e:
             await vendors.otp_send("+919800000001", "123456")
     assert sent[0]["campaignName"] == "hub_login_code_" and sent[0]["templateParams"] == ["123456"]
+    assert sent[0]["destination"] == "919800000001"                       # no '+'
+    assert sent[0]["buttons"][0]["parameters"][0]["text"] == "123456"     # code also in the copy-code button
     assert getattr(e.value, "code", "") == "vendor_failed"      # no silent fake-SMS fallback
     rec = [r for r in caplog.records if r.getMessage() == "whatsapp send failed"]
     assert rec and "Campaign not found" in rec[0].fields["reply"] and "apiKey" not in rec[0].fields["reply"]
