@@ -92,7 +92,7 @@ Then switch on each outside service as its keys arrive. Set each pair on both we
 
 | Feature | Variables |
 |---|---|
-| Login codes by WhatsApp | `VENDOR_WHATSAPP=live`, `AISENSY_API_KEY` |
+| Login codes by WhatsApp | `VENDOR_WHATSAPP=live`, `AISENSY_API_KEY`; optionally `AISENSY_CAMPAIGN_<NAME>` when an AiSensy API campaign isn't named like the app's (e.g. `AISENSY_CAMPAIGN_OTP_LOGIN=hub_login_code_`) |
 | Login codes by SMS | `VENDOR_SMS=live`, `MSG91_AUTH_KEY`, `MSG91_TEMPLATE_ID` |
 | AI agents and chat | `VENDOR_AI=live`, `ANTHROPIC_API_KEY` |
 | Email | `VENDOR_EMAIL=live`, `EMAIL_API_URL`, `EMAIL_API_KEY`, `EMAIL_FROM`, `INBOUND_DOMAIN` |
