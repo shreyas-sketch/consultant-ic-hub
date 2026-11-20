@@ -27,6 +27,9 @@ class Action:
     model: Optional[type]
     desc: str
     agent_ok: bool = True
+    # Changes who gets paid or who has access (payout details, team, roles). Agents and the
+    # MCP connector may only *propose* these: they always go to Approvals, whatever the autonomy.
+    sensitive: bool = False
 
     @property
     def tool_name(self):
@@ -36,11 +39,11 @@ class Action:
 ACTIONS: dict = {}
 
 
-def action(name, level, model=None, roles=ALL, desc="", agent_ok=True):
+def action(name, level, model=None, roles=ALL, desc="", agent_ok=True, sensitive=False):
     assert level in LEVELS, level
 
     def deco(fn):
-        ACTIONS[name] = Action(name, fn, level, frozenset(roles), model, desc or (fn.__doc__ or "").strip(), agent_ok)
+        ACTIONS[name] = Action(name, fn, level, frozenset(roles), model, desc or (fn.__doc__ or "").strip(), agent_ok, sensitive)
         return fn
     return deco
 
@@ -88,7 +91,7 @@ def registry_table():
     for a in sorted(ACTIONS.values(), key=lambda x: x.name):
         props = list((a.model.model_json_schema().get("properties", {}) if a.model else {}).keys())
         rows.append({"name": a.name, "level": a.level, "roles": sorted(a.roles - {"system"}),
-                     "inputs": props, "desc": a.desc, "agent_ok": a.agent_ok})
+                     "inputs": props, "desc": a.desc, "agent_ok": a.agent_ok, "sensitive": a.sensitive})
     return rows
 
 

@@ -150,6 +150,7 @@ def specs():
         Ix("threads", [WS, "project_id"]),
         Ix("messages", [WS, "project_id", ("created_at", -1)]),
         Ix("messages", ["provider_id"], sparse=True),              # delivery webhooks
+        Ix("messages", ["to", "channel", "direction", ("created_at", -1)]),   # WhatsApp reply routing (all practices)
         Ix("outbound_queue", ["idempotency_key"], unique=True),
         Ix("outbound_queue", ["status", "send_at"]),
         Ix("notifications", [WS, "user_id", "read"]),

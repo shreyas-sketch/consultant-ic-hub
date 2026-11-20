@@ -116,7 +116,7 @@ class WsUpdate(P):
     settings: Optional[dict] = None
 
 
-@action("workspace.update", "internal", WsUpdate, roles=ADMINS, desc="Update practice profile, theme, invoice details or settings.")
+@action("workspace.update", "internal", WsUpdate, roles=ADMINS, sensitive=True, desc="Update practice profile, theme, invoice details or settings.")
 async def ws_update(ctx, p: WsUpdate):
     ws = await ctx.ws()
     changes = {}
@@ -172,7 +172,7 @@ class TeamAdd(P):
     project_ids: list = []
 
 
-@action("team.add", "internal", TeamAdd, roles=ADMINS, desc="Add a team member by mobile number (they count as invited).")
+@action("team.add", "internal", TeamAdd, roles=ADMINS, sensitive=True, desc="Add a team member by mobile number (they count as invited).")
 async def team_add(ctx, p: TeamAdd):
     from app.auth import norm_phone
     if p.role not in ROLES or p.role == "owner":
@@ -202,7 +202,7 @@ class TeamRole(P):
     project_ids: Optional[list] = None
 
 
-@action("team.update_role", "internal", TeamRole, roles=ADMINS, desc="Change a team member's role.")
+@action("team.update_role", "internal", TeamRole, roles=ADMINS, sensitive=True, desc="Change a team member's role.")
 async def team_role(ctx, p: TeamRole):
     m = await ctx.data.memberships.get(p.membership_id)
     if not m:

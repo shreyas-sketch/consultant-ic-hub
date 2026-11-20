@@ -151,10 +151,23 @@ async def j_sessions():
 
 async def j_money():
     """Overdue marking (+ payment.overdue once), late fees at 30 days, invoice reminders."""
-    from app.domain.billing.money import past_due, save_invoice
-    from app.core.events import emit, log
+    """Each change is claimed on the live invoice item, never by saving the copy read here:
+    the cursor's copy can be minutes old, and saving it would undo payments confirmed meanwhile."""
+    from app.domain.billing.money import REV_BUMP, mutate_invoice, past_due
+    from app.domain.registry import call
+    from app.core.events import emit
+    from app.core.events import log as activity_log   # not `log`: that name is this module's logger
     db = get_db()
     n = 0
+
+    async def claim(ctx, inv_id, item_id, cond, changes, raw=None):
+        """Set fields on one schedule item if it is still unpaid and `cond` still holds. True if this call did it."""
+        match = {"id": item_id, "status": {"$nin": ["paid", "processing"]}, **cond}
+        upd = dict(REV_BUMP, **(raw or {}))
+        r = await ctx.data.invoices.update({"_id": inv_id, "schedule": {"$elemMatch": match}},
+                                           {f"schedule.$.{k}": v for k, v in changes.items()}, raw=upd)
+        return bool(r.modified_count)
+
     async for inv in db.invoices.find({"status": {"$in": ["sent", "partially_paid"]}, "deleted_at": None}).batch_size(BATCH):
         ctx = system_ctx(inv["workspace_id"])
         ws = await ctx.ws()
@@ -165,27 +178,35 @@ async def j_money():
                 continue
             due = aware(s["due_date"])
             if past_due(due) and not s.get("overdue_emitted"):
-                s["overdue_emitted"] = True
-                changed = True
-                await emit(ctx, "payment.overdue", {"invoice_id": inv["_id"], "item_id": s["id"]}, inv["project_id"])
+                if await claim(ctx, inv["_id"], s["id"], {"overdue_emitted": {"$ne": True}}, {"overdue_emitted": True}):
+                    changed = True
+                    await emit(ctx, "payment.overdue", {"invoice_id": inv["_id"], "item_id": s["id"]}, inv["project_id"])
             if lf.get("enabled") and not s.get("late_fee_added_at") and not s.get("late_fee_cancelled") and now() >= due + timedelta(days=30):
                 pct = min(int(lf.get("pct_bp", 0)), 1000)
-                s["late_fee_paise"] = (s["amount_paise"] - s.get("paid_paise", 0)) * pct // 10000
-                s["late_fee_added_at"] = now()
-                changed = True
-                await log(ctx, inv["project_id"], "payment", f"Late fee added on {s['label']} (once, not compounding)", ref=inv["_id"])
+
+                def add_fee(fresh, item_id=s["id"], pct=pct):
+                    x = next((x for x in fresh["schedule"] if x["id"] == item_id), None)
+                    if not x or x["status"] in ("paid", "processing") or x.get("late_fee_added_at") or x.get("late_fee_cancelled"):
+                        return False
+                    x["late_fee_paise"] = (x["amount_paise"] - x.get("paid_paise", 0)) * pct // 10000
+                    x["late_fee_added_at"] = now()
+
+                _, added = await mutate_invoice(ctx, inv["_id"], add_fee)
+                if added:
+                    changed = True
+                    await activity_log(ctx, inv["project_id"], "payment", f"Late fee added on {s['label']} (once, not compounding)",
+                                       ref=inv["_id"])
             for off in ws["invoice"].get("reminders", [-3, 0, 3, 7]):
                 tag = f"r{off}"
                 if tag not in s.get("reminded", []) and now() >= due + timedelta(days=off) and now() < due + timedelta(days=off + 1):
-                    s.setdefault("reminded", []).append(tag)
+                    if not await claim(ctx, inv["_id"], s["id"], {"reminded": {"$ne": tag}}, {}, raw={"$push": {"schedule.$.reminded": tag}}):
+                        continue
                     changed = True
                     try:
-                        from app.domain.registry import call
                         await call(ctx.child(idem_key=f"invrem:{inv['_id']}:{s['id']}:{off}"), "invoices.remind", {"id": inv["_id"], "item_id": s["id"]})
                     except Exception:
                         log.exception("invoice reminder failed: invoice %s item %s", inv["_id"], s["id"])
         if changed:
-            await save_invoice(ctx, inv)
             n += 1
     return n
 

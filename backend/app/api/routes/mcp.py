@@ -9,7 +9,7 @@ Two ways in:
 The person's role is checked on every call, and results go through the same
 money and cost filter as the screens. External and money actions land in
 Approvals unless the practice allows otherwise. Destructive actions are never
-offered. Speaks the stateless 2026-07-28 revision (server/discover, _meta) and
+offered. Sensitive actions (payout details, team, roles) always go to Approvals. Speaks the stateless 2026-07-28 revision (server/discover, _meta) and
 the older initialize handshake.
 """
 import hashlib
@@ -152,7 +152,7 @@ async def handle(ctx, scope, ws, msg, request=None):
             return ok(rid, {"content": [{"type": "text", "text": "That tool isn't available with this connector."}], "isError": True}, modern)
         args = params.get("arguments") or {}
         try:
-            if a.level in ("external", "money") and not (scope == "full" and ws.get("settings", {}).get("mcp_auto_external")):
+            if a.sensitive or (a.level in ("external", "money") and not (scope == "full" and ws.get("settings", {}).get("mcp_auto_external"))):
                 ap = await create_approval(ctx, a.name, args, preview_for(a.name, args), "Requested by an outside assistant",
                                            project_id=args.get("project_id"), source="mcp", agent=None)
                 out = {"queued_for_approval": ap["_id"], "note": "The consultant will approve this in the app before it goes out."}
