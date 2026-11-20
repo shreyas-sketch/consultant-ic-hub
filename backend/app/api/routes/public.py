@@ -8,6 +8,7 @@ instructions by any agent.
 """
 import base64
 import hashlib
+import logging
 import random
 import re
 from datetime import timedelta
@@ -863,18 +864,44 @@ async def email_inbound(body: dict):
     return {"ok": True}
 
 
+async def whatsapp_route(phone):
+    """Which practice and project a WhatsApp reply belongs to: (workspace_id, project_id) or None.
+
+    All practices send from one WhatsApp number, so the sender's phone alone can match
+    contacts in several practices. A reply goes to exactly one: the practice that last
+    sent WhatsApp to this number. With no such message, only an unambiguous match is used;
+    a client's words never reach a practice they weren't talking to."""
+    db = get_db()
+    last = await db.messages.find_one({"to": phone, "channel": "whatsapp", "direction": "out", "deleted_at": None},
+                                      sort=[("created_at", -1)])
+    if last:
+        pr = await db.projects.find_one({"_id": last.get("project_id"), "workspace_id": last["workspace_id"], "deleted_at": None})
+        if pr and not pr.get("archived"):
+            return last["workspace_id"], pr["_id"]
+        ws_ids = [last["workspace_id"]]
+    else:
+        ws_ids = sorted({c["workspace_id"] for c in await db.contacts.find({"phone": phone, "deleted_at": None}).to_list(None)})
+        if len(ws_ids) > 1:
+            logging.getLogger("app.hooks").warning("WhatsApp reply matches %d practices and none messaged this number; not delivered",
+                                                   len(ws_ids))
+            return None
+    for ws_id in ws_ids:
+        cids = [c["_id"] for c in await db.contacts.find({"workspace_id": ws_id, "phone": phone, "deleted_at": None}).to_list(None)]
+        pr = await db.projects.find_one({"workspace_id": ws_id, "contact_ids": {"$in": cids}, "deleted_at": None, "archived": False},
+                                        sort=[("last_activity_at", -1)]) if cids else None
+        if pr:
+            return ws_id, pr["_id"]
+    return None
+
+
 @hooks.post("/whatsapp-inbound")
 async def whatsapp_inbound(body: dict):
     phone = norm_phone(body.get("from") or body.get("phone") or "")
     text = (body.get("text") or body.get("message") or "")[:5000]
-    db = get_db()
-    contacts = await db.contacts.find({"phone": phone, "deleted_at": None}).to_list(None)
-    for c in contacts:
-        pr = await db.projects.find_one({"workspace_id": c["workspace_id"], "contact_ids": c["_id"], "deleted_at": None, "archived": False},
-                                        sort=[("last_activity_at", -1)])
-        if pr:
-            await receive(cctx(c["workspace_id"]), pr["_id"], "whatsapp", phone, "", text)
-    return {"ok": True, "matched": len(contacts)}
+    route = await whatsapp_route(phone)
+    if route:
+        await receive(cctx(route[0]), route[1], "whatsapp", phone, "", text)
+    return {"ok": True, "matched": 1 if route else 0}
 
 
 @hooks.post("/email-events")

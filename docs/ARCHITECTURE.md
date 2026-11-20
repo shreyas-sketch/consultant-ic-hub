@@ -86,6 +86,7 @@ So roles, read-only access, limits and the money/cost filter are enforced in exa
 - **Isolation by construction.** Domain code never touches the raw database: `ctx.data.<collection>` adds `workspace_id` to every filter and insert and hides soft-deleted rows. A test fails if a domain module calls `get_db()` on a tenant collection.
 - **No transactions needed.** Money and sends are made idempotent with unique keys (`ledger.key`, `approvals.idempotency_key`, `outbound_queue.idempotency_key`, `automation_runs.run_key`, `invoices.number_key`, ...). Races resolve to "one insert wins, the other gets already-done". The same code runs on the in-memory test database and on a real cluster.
 - **Money** is integer paise end to end. Invoice numbers have no gaps per Indian financial year.
+- **Invoices carry a revision (`rev`).** A whole-invoice save only lands on the revision it was read at; an out-of-date copy is refused (`InvoiceChanged`) instead of undoing someone else's change. Money paths re-read and retry (`mutate_invoice`); the money job claims each schedule-item change with a targeted update.
 
 ## Scaling the database
 
@@ -93,7 +94,7 @@ What is in place now:
 
 | Concern | How |
 |---|---|
-| Hot queries | Declarative index specs (`app/db/indexes.py`): every tenant index leads with `workspace_id`, then equality, then sort/range fields. 164 indexes, built idempotently on each deploy |
+| Hot queries | Declarative index specs (`app/db/indexes.py`): every tenant index leads with `workspace_id`, then equality, then sort/range fields. 167 indexes, built idempotently on each deploy |
 | Public pages and webhooks | Token lookups (`client_files`, `invoices`, `uploads`, `tasks`) and webhook lookups (`messages.provider_id`, `sessions.notetaker.bot_id`) are indexed; they were full collection scans before |
 | Job scans across tenants | Each scan has its own status index (`invoices.status`, `sessions.status+start`, `outbound_queue.status+send_at`, ...) and streams a cursor in batches of 500, so nothing past a cap is ever skipped |
 | Growth of short-lived data | TTL indexes expire OTP codes, sessions, OAuth state/codes/tokens, client sessions, job runs (30 d), vendor log (30 d) and processed events (90 d) |
@@ -138,13 +139,15 @@ Static assets are content-hashed and served with `Cache-Control: immutable` for 
 - Invite-only phone OTP; codes hashed, 5 tries, 10-minute expiry, atomic single use, per-IP rate limit on every OTP door (consultant and client).
 - Session cookies `HttpOnly`, `Secure`, `SameSite=Lax`; refresh tokens stored hashed; removed users lose sessions.
 - Tenant isolation by construction (`ctx.data`), role checks in the registry, money and cost redaction on every result.
-- Client text is data, never instructions, for agents (`<client_data>` wrapping).
+- Client text is data, never instructions, for agents (`<client_data>` wrapping, tool results included).
+- Sensitive actions (payout details in practice settings, adding team, changing roles) are only ever proposed by agents and the MCP connector: they always go to Approvals.
+- Inbound WhatsApp replies are routed to one practice: the one that last messaged that number.
 - PDFs: client fields HTML-escaped, renderer limited to `data:` URLs (no file or network fetches).
 - Security headers and HSTS on every response; SPA paths confined to the build folder.
 - Production refuses to boot with unsafe settings (`settings.validate()`).
 
 ## Testing
 
-- `backend/tests`: 128 tests, run on the in-memory database and on real MongoDB, including the platform guarantees above (layering, indexes, TTLs, migrations, storage confinement, upload sniffing, rate limits, headers, PDF escaping, config refusal, lease behaviour).
+- `backend/tests`: 141 tests, run on the in-memory database and on real MongoDB, including the platform guarantees above (layering, indexes, TTLs, migrations, storage confinement, upload sniffing, rate limits, headers, PDF escaping, config refusal, lease behaviour).
 - `scripts/crawl.mjs`: opens every screen at 390 px and 1280 px and fails on 5xx, page errors, sideways scroll, `NaN`/`undefined` or raw ISO dates.
 - CI (`.github/workflows/ci.yml`): backend tests, frontend lint + build, Docker image build.

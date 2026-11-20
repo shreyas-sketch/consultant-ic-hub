@@ -193,13 +193,51 @@ async def new_invoice(ctx, project, lines=None, schedule=None, title="", file_id
     return await ctx.data.invoices.insert(inv)
 
 
+class InvoiceChanged(AppError):
+    """The invoice was changed by someone else after this copy was read."""
+
+    def __init__(self):
+        super().__init__("changed", "This invoice was just updated. Please refresh and try again.", 409)
+
+
+REV_BUMP = {"$inc": {"rev": 1}}   # for targeted updates: makes older copies refuse to save
+
+
 async def save_invoice(ctx, inv):
+    """Write the whole invoice, but only over the revision it was read at.
+
+    A copy read before someone else's change (a payment confirmed, a claim, the
+    money job) raises InvoiceChanged instead of silently undoing that change."""
     ws = await ctx.ws()
     compute(inv, ws)
     pr = await ctx.data.projects.get(inv["project_id"])
     due_dates(inv, pr, inv.get("sent_at"), inv.get("signed_at"))
-    await ctx.data.invoices.update({"_id": inv["_id"]}, {k: v for k, v in inv.items() if k not in ("_id", "workspace_id", "created_at")})
+    rev = int(inv.get("rev") or 0)
+    fields = {k: v for k, v in inv.items() if k not in ("_id", "workspace_id", "created_at", "rev")}
+    fields["rev"] = rev + 1
+    r = await ctx.data.invoices.update({"_id": inv["_id"], "rev": rev if rev else {"$in": [None, 0]}}, fields)
+    if not r.matched_count:
+        raise InvoiceChanged()
+    inv["rev"] = rev + 1
     return inv
+
+
+async def mutate_invoice(ctx, invoice_id, change, tries=5):
+    """Read the latest invoice, apply `change(inv)` and save; retry if it changed meanwhile.
+
+    `change` must only edit the dict (no sends or events): it can run more than once.
+    It returns False to leave the invoice as it is. Returns (invoice, changed)."""
+    for _ in range(tries):
+        inv = await ctx.data.invoices.get(invoice_id)
+        if not inv:
+            raise not_found("That invoice")
+        if change(inv) is False:
+            return inv, False
+        try:
+            return await save_invoice(ctx, inv), True
+        except InvoiceChanged:
+            continue
+    raise AppError("busy", "This invoice is busy right now. Please try again.", 503)
 
 
 async def get_inv(ctx, iid, act=False):
@@ -529,7 +567,7 @@ async def invoices_void(ctx, p: VoidIn):
     inv = await get_inv(ctx, p.id, act=True)
     if has_payments(inv):
         raise AppError("locked", "An invoice with payments can't be voided. Use a credit note.", 409)
-    await ctx.data.invoices.update({"_id": inv["_id"]}, {"status": "void"})
+    await ctx.data.invoices.update({"_id": inv["_id"]}, {"status": "void"}, raw=REV_BUMP)
     from app.domain.billing.timebill import release_invoice_time
     n = await release_invoice_time(ctx, inv, p.time_to)
     return {"ok": True, "time_released": n}
@@ -558,18 +596,20 @@ async def client_claim(ctx, inv, item_id, method, reference="", screenshot_key=N
     if s["status"] == "processing":
         return {"ok": True, "already_claimed": True}
     # Claim the line atomically: of several taps arriving together, only one moves it to processing.
+    claim_id = new_id()
     got = await ctx.data.invoices.update(
         {"_id": inv["_id"], "schedule": {"$elemMatch": {"id": item_id, "status": {"$nin": ["paid", "processing"]}}}},
-        {"schedule.$.status": "processing"})
+        {"schedule.$.status": "processing", "schedule.$.claim_id": claim_id}, raw=REV_BUMP)
     if not got.modified_count:
         return {"ok": True, "already_claimed": True}
-    claim = await ctx.data.payment_claims.insert({"invoice_id": inv["_id"], "project_id": inv["project_id"], "item_id": item_id,
-                                                  "method": method, "reference": reference[:80], "screenshot_key": screenshot_key,
+    claim = await ctx.data.payment_claims.insert({"_id": claim_id, "invoice_id": inv["_id"], "project_id": inv["project_id"],
+                                                  "item_id": item_id, "method": method, "reference": reference[:80],
+                                                  "screenshot_key": screenshot_key,
                                                   "amount_paise": s["amount_paise"] + s.get("late_fee_paise", 0) - s.get("paid_paise", 0),
                                                   "status": "pending", "invoice_version": inv.get("version", 1)})
+    # The targeted update above is the save: writing this (older) copy back could undo someone else's change.
     s["status"] = "processing"
     s["claim_id"] = claim["_id"]
-    await save_invoice(ctx, inv)
     await log(ctx, inv["project_id"], "payment", f"Client says they paid {inr(claim['amount_paise'])} by {method.upper()}"
               f"{(' (ref ' + reference + ')') if reference else ''}. Waiting for your confirmation.", ref=claim["_id"])
     await emit(ctx, "payment.claimed", {"invoice_id": inv["_id"], "item_id": item_id, "claim_id": claim["_id"]}, inv["project_id"])
@@ -607,15 +647,19 @@ async def confirm_payment(ctx, inv, item_id, received=None, tds=0, method="upi",
     await ledger(ctx, f"pay:{pay_id}", "payment", received, inv, ref=pay_id, extra={"method": method})
     if tds:
         await ledger(ctx, f"tds:{pay_id}", "tds", tds, inv, ref=pay_id)
-    fresh = await ctx.data.invoices.get(inv["_id"])
-    first_ever = not any(x["status"] == "paid" for x in fresh["schedule"])
-    for x in fresh["schedule"]:
-        if x["id"] == item_id:
-            x.update({"status": "paid", "paid_paise": x.get("paid_paise", 0) + received, "tds_paise": x.get("tds_paise", 0) + tds,
-                      "paid_at": now()})
-    all_paid = all(x["status"] == "paid" for x in fresh["schedule"])
-    fresh["status"] = "paid" if all_paid else "partially_paid"
-    await save_invoice(ctx, fresh)
+    seen = {}
+
+    def mark_paid(fresh):
+        seen["first_ever"] = not any(x["status"] == "paid" for x in fresh["schedule"])
+        for x in fresh["schedule"]:
+            if x["id"] == item_id and x["status"] != "paid":
+                x.update({"status": "paid", "paid_paise": x.get("paid_paise", 0) + received, "tds_paise": x.get("tds_paise", 0) + tds,
+                          "paid_at": now()})
+        seen["all_paid"] = all(x["status"] == "paid" for x in fresh["schedule"])
+        fresh["status"] = "paid" if seen["all_paid"] else "partially_paid"
+
+    await mutate_invoice(ctx, inv["_id"], mark_paid)
+    first_ever, all_paid = seen["first_ever"], seen["all_paid"]
     if s.get("claim_id"):
         await ctx.data.payment_claims.update({"_id": s["claim_id"]}, {"status": "confirmed"})
     await log(ctx, inv["project_id"], "payment", f"Payment confirmed: {inr(received)}" + (f" + TDS {inr(tds)}" if tds else ""),
@@ -651,11 +695,14 @@ async def payments_reject(ctx, p: RejectIn):
     if not cl or cl["status"] != "pending":
         raise not_found("That claim")
     inv = await get_inv(ctx, cl["invoice_id"], act=True)
-    for s in inv["schedule"]:
-        if s["id"] == cl["item_id"] and s["status"] == "processing":
-            s["status"] = "upcoming"
-            s.pop("claim_id", None)
-    await save_invoice(ctx, inv)
+
+    def back_to_due(fresh):
+        for s in fresh["schedule"]:
+            if s["id"] == cl["item_id"] and s["status"] == "processing":
+                s["status"] = "upcoming"
+                s.pop("claim_id", None)
+
+    await mutate_invoice(ctx, inv["_id"], back_to_due)
     await ctx.data.payment_claims.update({"_id": cl["_id"]}, {"status": "rejected", "reason": p.reason})
     pr = await ctx.data.projects.get(inv["project_id"])
     c = await contact_for(ctx, pr, inv.get("contact_id"))

@@ -4,6 +4,8 @@ Plain status of what's built, what's tested, and what's left before real consult
 
 Updated 13 Nov 2026: the add-ons from the Bonsai study are now built (section "Add-ons" below).
 
+Updated 20 Nov 2026: fixed four bugs from code review (money job crash on a failed reminder; stale invoice saves undoing confirmed payments; WhatsApp replies reaching every practice with that contact; agents and MCP changing payout details or the team without approval). Tests in `backend/tests/test_review_fixes.py`.
+
 Updated 19 Nov 2026: restructured for production on Railway (section "Restructure for production" below). No product behaviour changed; all 225 actions and every screen are as before.
 
 ## What's built
@@ -57,7 +59,7 @@ Counts: 225 actions, 9 agents, 31 limit keys, 21 consultant screens (plus 13 set
 
 - **Layout.** Backend is one package, `backend/app`, in layers (api → auth/domain → agents/automations → integrations/services → db/core); a test enforces the direction. Frontend is feature-based with a shared layer and an `@/` alias. See `docs/ARCHITECTURE.md`.
 - **Deploy.** Railway: web (pre-deploy migrations, readiness check), worker, MongoDB (image + volume) and a Storage Bucket. Settings are made on each service; Railway no longer reads `railway.json` for new services. See `docs/DEPLOY_RAILWAY.md`.
-- **Database.** 164 declared indexes (tenant-first compound, token and webhook lookups, TTL for short-lived data), versioned migrations, pooled client, streamed job scans, bounded per-workspace concurrency, renewed job leases.
+- **Database.** 167 declared indexes (tenant-first compound, token and webhook lookups, TTL for short-lived data), versioned migrations, pooled client, streamed job scans, bounded per-workspace concurrency, renewed job leases.
 - **Fixed on the way:**
   - Jobs only processed the first N matches (`to_list(5000)` and similar); the rest were silently skipped.
   - Each job's first run was skipped and then locked for 10 minutes (the lease read the pre-upsert document).

@@ -38,6 +38,7 @@ MongoDB multi-document transactions are not used. Double sends and double paymen
 | Automation run | `automation_runs.run_key` |
 | Booked slot | `slot_locks._id = host|start` |
 | Invoice number | `invoices.number_key` |
+| Whole-invoice save | `invoices.rev`: saved only over the revision it was read at, else re-read and retried |
 | Budget cycle and its alerts | `budget_cycles.cycle_key`, alerts added only if not already sent |
 | Retainer period | `retainer_periods.period_key`; close claimed open → closing → closed |
 | Checklist and repeating tasks | `tasks.occurrence_key` |
@@ -67,8 +68,9 @@ Actions write events to an outbox. The dispatcher (every few seconds) takes each
 
 - Tool-use loop over the action registry. `gate()` decides per call: run, ask for approval, suggest only, or refuse.
 - Modes: draft (everything waits for OK), ask, auto. Money always needs a person.
+- Actions marked `sensitive` (`workspace.update`, `team.add`, `team.update_role`) always need a person too, in every mode and over MCP.
 - AI budget per workspace per month (`ai_cost_cap_paise`, default ₹400, set in Admin), and at most ₹25 per run.
-- Client text is wrapped in `<client_data>` and treated as data, never instructions.
+- Client text, and every tool result, is wrapped in `<client_data>` and treated as data, never instructions.
 - QA mode uses scripted plans, so tests and demos run without an API key.
 
 ## Limits
