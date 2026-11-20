@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, Navigate, Route, Routes, useNavigate } from "react-router";
-import { useQuery } from "@tanstack/react-query";
-import { ArrowLeft, Undo2 } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, LogOut, Undo2 } from "lucide-react";
 import { get, post, req } from "@/shared/api";
 import { date, dt, inr, titleCase } from "@/shared/lib/format";
 import { Wordmark, useMe } from "@/app/layout/AppShell";
@@ -13,14 +13,30 @@ const TABS = [["", "Overview"], ["invites", "Invites"], ["limits", "Limits"], ["
 export default function Admin() {
   const me = useMe();
   const nav = useNavigate();
+  const qc = useQueryClient();
+  const [leaving, setLeaving] = useState(false);
+  async function logout() {
+    setLeaving(true);
+    try { await post("/api/auth/logout"); } catch { /* already signed out: still leave */ }
+    qc.clear();
+    location.replace("/admin/login");   // full reload: nothing from the session stays in memory
+  }
   if (me.isLoading) return <div className="p-6"><SkeletonList /></div>;
   if (me.isError) return <Navigate to="/admin/login" replace />;
   if (!me.data.user.is_admin) return <div className="p-6"><Card>This area is for the product team only.</Card></div>;
   return (
     <div className="mx-auto max-w-[1200px] px-4 py-5 md:px-8">
-      <div className="mb-4 flex items-center gap-3"><button onClick={() => nav("/")} className="grid h-10 w-10 place-items-center rounded-full hover:bg-panel" aria-label="Back"><ArrowLeft size={18} /></button><Wordmark /><Chip>Admin</Chip></div>
+      <div className="mb-4 flex items-center gap-3">
+        {/* Back to the consultant app only for people who also have a practice; staff-only accounts would bounce straight back. */}
+        {me.data.workspaces.length > 0 && <button onClick={() => nav("/")} className="grid h-10 w-10 place-items-center rounded-full hover:bg-panel" aria-label="Back to the app"><ArrowLeft size={18} /></button>}
+        <Wordmark /><Chip>Admin</Chip>
+        <div className="ml-auto flex items-center gap-3">
+          <span className="hidden text-[13px] text-ivory-70 sm:inline">{me.data.user.name || me.data.user.email || "Staff"}</span>
+          <Button size="sm" icon={LogOut} busy={leaving} onClick={logout}>Log out</Button>
+        </div>
+      </div>
       <nav className="scroll-x mb-5 flex gap-1 border-b border-hairline">{TABS.map(([p, l]) => (
-        <NavLink key={p} end to={`/admin/${p}`} className={({ isActive }) => cx("h-11 whitespace-nowrap px-3 pt-3 text-[14px] font-bold", isActive ? "text-gold" : "text-ivory-70")}>{l}</NavLink>))}</nav>
+        <NavLink key={p} end to={`/admin/${p}`} className={({ isActive }) => cx("h-11 shrink-0 whitespace-nowrap px-3 pt-3 text-[14px] font-bold", isActive ? "text-gold" : "text-ivory-70")}>{l}</NavLink>))}</nav>
       <Routes>
         <Route index element={<Overview />} /><Route path="invites" element={<Invites />} /><Route path="limits" element={<Limits />} /><Route path="workspaces" element={<Workspaces />} />
         <Route path="usage" element={<Usage />} /><Route path="ai" element={<Ai />} /><Route path="funnel" element={<Funnel />} /><Route path="health" element={<Health />} />
